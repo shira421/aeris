@@ -18,7 +18,7 @@ const fleet=Array.from({length:60},(_,i)=>({hex:(0x76c000+i).toString(16),flight
  lat0:1.36+Math.sin(i*1.7)*1.4,lon0:103.99+Math.cos(i*2.3)*1.6,track:i===0?320:(i*37)%360,gs:i%10===8?110:i%10===9?120:430,alt:i===5?'ground':i%10===8?3500:i%10===9?1500:4000+((i*2300)%36000),rate:i%3?0:-800,trackRate:i===3?1.5:null}));
 // A flight far from the map view: only callsign/hex/registration lookups return it.
 const FAR={hex:'3c6444',type:'adsb_icao',flight:'DLH400  ',r:'D-AIXD',t:'A359',alt_baro:37000,alt_geom:37600,gs:480,track:290,baro_rate:0,lat:52.9,lon:-12.4,seen_pos:.5,seen:.3,category:'A5',squawk:'1000',messages:900,rssi:-22};
-const REGION={...FAR,hex:'400001',flight:'BAW100',lat:51.5,lon:-.1};
+const REGION={...FAR,hex:'7c0001',flight:'QFA100',lat:-33.87,lon:151.21};
 function aircraftAt(now){return fleet.map(a=>{const dt=now-t0,d=(a.gs*1852/3600)*dt/111320;const lat=a.lat0+d*Math.cos(a.track*Math.PI/180),lon=a.lon0+d*Math.sin(a.track*Math.PI/180)/Math.cos(a.lat0*Math.PI/180);
  return {hex:a.hex,type:'adsb_icao',flight:a.flight,r:a.r,t:a.t,alt_baro:a.alt,alt_geom:typeof a.alt==='number'?a.alt+150:undefined,gs:a.alt==='ground'?8:a.gs,track:a.track,track_rate:a.trackRate??undefined,baro_rate:a.rate,lat,lon,seen_pos:.4,seen:.2,nav_qnh:1011.2,ias:a.gs-140,tas:a.gs-10,mach:.78,wd:240,ws:31,oat:-41,nac_p:9,category:a.t==='EC35'?'A7':'A3',squawk:'2341',messages:1000,rssi:-20};});}
 let proxyHits=0;const providerHits={};
@@ -29,7 +29,7 @@ async function routes(context){
   else if(/\/hex\//.test(target.pathname)){const id=target.pathname.split('/').pop();body={ac:[...aircraftAt(now),FAR].filter(a=>a.hex===id),now:now*1000};}
   else if(/\/type\//.test(target.pathname)){const t=target.pathname.split('/').pop();body={ac:[...aircraftAt(now),FAR].filter(a=>a.t===t),now:now*1000};}
   else if(/callsign|reg/.test(target.pathname)){const q=decodeURIComponent(target.pathname.split('/').pop()).toUpperCase();body={ac:[...aircraftAt(now),FAR].filter(a=>a.flight.trim()===q||a.r===q),now:now*1000};}
-  else {const lat=Number(target.pathname.match(/(?:lat|point)\/(-?[\d.]+)/)?.[1]);body={ac:lat>45?[REGION]:aircraftAt(now),now:now*1000,msg:'No error'};}
+  else {const lat=Number(target.pathname.match(/(?:lat|point)\/(-?[\d.]+)/)?.[1]);if(lat<-20)await new Promise(resolve=>setTimeout(resolve,250));body={ac:lat<-20?[REGION]:aircraftAt(now),now:now*1000,msg:'No error'};}
   await route.fulfill({status:200,contentType:'application/json',headers:{date:new Date().toUTCString()},body:JSON.stringify(body)});});
  await context.route('https://api.adsbdb.com/**',route=>{const u=new URL(route.request().url());
   if(u.pathname.includes('/callsign/SIA22'))return route.fulfill({status:200,contentType:'application/json',headers:{'access-control-allow-origin':'*'},body:JSON.stringify({response:{flightroute:{callsign:'SIA22',callsign_iata:'SQ22',airline:{name:'Singapore Airlines',icao:'SIA',iata:'SQ',country:'Singapore'},origin:{iata_code:'SIN',icao_code:'WSSS',name:'Singapore Changi Airport',municipality:'Singapore',country_name:'Singapore',latitude:1.35019,longitude:103.994},destination:{iata_code:'EWR',icao_code:'KEWR',name:'Newark Liberty International Airport',municipality:'Newark',country_name:'United States',latitude:40.6925,longitude:-74.1687}}}})});
@@ -148,8 +148,9 @@ try{
    await page.click('#dialog [data-style="satellite"]');await page.waitForFunction(()=>window.__aeris.state.mapStyle==='satellite');await page.click('#dialog [data-style="map"]');await page.click('#dialog [data-action="close-dialog"]');
    await page.evaluate(()=>document.querySelector('#source-pill').click());const src=await page.textContent('#dialog');assert.match(src,/adsb\.lol/);assert.match(src,/through the proxy/);await page.click('#dialog [data-action="close-dialog"]');});
   await step(viewport.name+': panning to a new region renders its planes promptly',async()=>{
-   const start=Date.now();await page.evaluate(()=>{window.__aeris.deselect();window.__aeris.map.map.jumpTo({center:[-.1,51.5],zoom:8});});
-   await page.waitForFunction(()=>window.__aeris.map.map.queryRenderedFeatures({layers:['flights']}).some(f=>f.properties.id==='400001'),null,{timeout:5000});
+   assert.equal(await page.evaluate(()=>window.__aeris.live.get('7c0001')),null,'the new region must not already be cached');
+   const start=Date.now();await page.evaluate(()=>{window.__aeris.deselect();window.__aeris.map.map.jumpTo({center:[151.21,-33.87],zoom:8});});
+   await page.waitForFunction(()=>window.__aeris.map.map.queryRenderedFeatures({layers:['flights']}).some(f=>f.properties.id==='7c0001'),null,{timeout:5000});
    console.log(`new region visible in ${Date.now()-start} ms`);
    await page.screenshot({path:`qa/${viewport.name}-new-region.png`});
   });
