@@ -142,7 +142,7 @@ jobs:
           # Location for the blue dot: allow it and place the simulator in Singapore.
           xcrun simctl privacy "$DEVICE" grant location com.shira421.aeris || true
           # Allow notifications too, so the self-test can turn alerts on the way a person does.
-          (brew tap wix/brew >/dev/null 2>&1 && brew install applesimutils >/dev/null 2>&1 && applesimutils --byId "$DEVICE" --bundle com.shira421.aeris --setPermissions notifications=YES) || echo "::warning::Could not pre-allow notifications in the simulator
+          (brew tap wix/brew >/dev/null 2>&1 && brew install applesimutils >/dev/null 2>&1 && applesimutils --byId "$DEVICE" --bundle com.shira421.aeris --setPermissions notifications=YES) || echo "::warning::Could not pre-allow notifications in the simulator"
           xcrun simctl location "$DEVICE" set 1.3521,103.8198 || true
           # The Home Screen registers a new install in the background. A launch sent before that
           # finishes can be dropped: the app never comes to the front (seen on main, 8 Nov).
