@@ -68,7 +68,8 @@ try{
    if(viewport.mobile){await page.setViewportSize({width:320,height:844});await page.evaluate(()=>document.querySelector('.workspace').classList.add('detail-open'));}
    const layout=await page.locator('.view-card').evaluate(button=>{
     const b=button.getBoundingClientRect(),text=button.querySelector('.view-label').getBoundingClientRect(),plane=button.querySelector('.preview-plane').getBoundingClientRect(),arrow=button.querySelector('.view-arrow').getBoundingClientRect();
-    return {fits:text.left>=b.left&&text.right<=plane.left&&text.bottom<=b.bottom&&plane.right<=arrow.left,overflow:button.scrollWidth>button.clientWidth};
+    const label=button.querySelector('.view-label');
+    return {fits:text.left>=b.left&&text.right<=plane.left&&text.bottom<=b.bottom&&plane.right<=arrow.left&&arrow.right<=b.right,overflow:label.scrollWidth>label.clientWidth};
    });assert.ok(layout.fits);assert.equal(layout.overflow,false);
    await page.screenshot({path:`qa/${viewport.name}-3d-button.png`});
    if(viewport.mobile)await page.setViewportSize({width:viewport.width,height:viewport.height});

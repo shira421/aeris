@@ -43,6 +43,8 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_NOTIFICATIONS = 2;
     private WebView webView;
     private final ExecutorService network = Executors.newFixedThreadPool(4);
+    // A slow traffic request must not delay watch-list acknowledgements or reorder native saves.
+    private final ExecutorService deviceWork = Executors.newSingleThreadExecutor();
     private final List<String> locationWaiting = new ArrayList<>();
     private final List<String> notifyWaiting = new ArrayList<>();
 
@@ -114,34 +116,34 @@ public final class MainActivity extends Activity {
             return;
         }
         try {
-        switch (message.optString("action")) {
-            case "location":
-                requestLocation(id);
-                break;
-            case "notifyPermission":
-                notificationPermission(id, message.optBoolean("request"));
-                break;
-            case "notify":
-                FlightWatch.post(this, message.optString("title", "Aeris"), message.optString("body"), message.optString("id", "aeris"));
-                replyDevice(id, true, null);
-                break;
-            case "watch": {
-                final org.json.JSONArray items = message.optJSONArray("items");
-                runDeviceTask(id, () -> {
-                    FlightWatch.setItems(getApplicationContext(), items);
-                    return true;
-                });
-                break;
+            switch (message.optString("action")) {
+                case "location":
+                    requestLocation(id);
+                    break;
+                case "notifyPermission":
+                    notificationPermission(id, message.optBoolean("request"));
+                    break;
+                case "notify":
+                    FlightWatch.post(this, message.optString("title", "Aeris"), message.optString("body"), message.optString("id", "aeris"));
+                    replyDevice(id, true, null);
+                    break;
+                case "watch": {
+                    final org.json.JSONArray items = message.optJSONArray("items");
+                    runDeviceTask(id, () -> {
+                        FlightWatch.setItems(getApplicationContext(), items);
+                        return true;
+                    });
+                    break;
+                }
+                case "watchState":
+                    runDeviceTask(id, () -> FlightWatch.items(getApplicationContext()));
+                    break;
+                case "runChecks":
+                    runDeviceTask(id, () -> FlightWatch.checkAll(getApplicationContext()));
+                    break;
+                default:
+                    replyDevice(id, null, "Unknown action");
             }
-            case "watchState":
-                runDeviceTask(id, () -> FlightWatch.items(getApplicationContext()));
-                break;
-            case "runChecks":
-                runDeviceTask(id, () -> FlightWatch.checkAll(getApplicationContext()));
-                break;
-            default:
-                replyDevice(id, null, "Unknown action");
-        }
         } catch (RuntimeException error) {
             replyDevice(id, null, "The device request could not be completed. Please try again.");
         }
@@ -150,7 +152,7 @@ public final class MainActivity extends Activity {
     /** A native failure must reject the web request, never escape an executor and kill the app. */
     private void runDeviceTask(String id, Callable<Object> task) {
         try {
-            network.execute(() -> {
+            deviceWork.execute(() -> {
                 Object value = null;
                 String error = null;
                 try { value = task.call(); }
@@ -340,6 +342,7 @@ public final class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         network.shutdownNow();
+        deviceWork.shutdownNow();
         if (webView != null) {
             webView.destroy();
             webView = null;
