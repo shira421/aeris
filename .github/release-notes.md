@@ -1,4 +1,4 @@
-Aeris shows live aircraft from community ADS-B networks on an accurate world map, with a 3D view of the selected flight.
+Aeris is a live flight tracker. Search for any flight in the air worldwide by flight number, airline, aircraft type or registration; save flights, aircraft and airports; and get alerts when a saved flight takes off, approaches, lands or squawks an emergency code.
 
 ## iPhone and iPad
 
@@ -17,5 +17,6 @@ Download **Aeris-Android.apk** on Android 8 or later and open it. Allow installa
 
 - Live positions come from community ADS-B networks (adsb.lol, airplanes.live, adsb.fi, OpenSky). Coverage depends on their volunteer receivers, and each service's terms apply.
 - Routes and airframe details come from public databases and can be wrong or out of date. Aeris checks a route against the aircraft's position and says when it does not fit.
+- Alerts: the iPhone and Android apps check saved flights every minute while open and in the background every 15 minutes or more (the phone decides exactly when). The web app alerts only while it is open.
 - The 3D aircraft are original models built from each type's published dimensions, not exact airframes or liveries.
 - `SHA256SUMS.txt` lists checksums for every download.

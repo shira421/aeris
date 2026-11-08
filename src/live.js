@@ -30,14 +30,19 @@ export class LiveFeed{
  setPaused(p){this.paused=p;}
  setView(bounds,zoom){
   this.view={bounds,zoom};
-  const circles=coverageCircles(bounds,250,36);const key=c=>c.lat.toFixed(1)+','+c.lon.toFixed(1)+','+c.nm;
+  const circles=coverageCircles(bounds,250,24);const key=c=>c.lat.toFixed(1)+','+c.lon.toFixed(1)+','+c.nm;
   // Keep timing state for circles that are still wanted, so panning does not refetch everything.
   const next=new Map();for(const c of circles){const k=key(c);next.set(k,this.circleState.get(k)||{last:0,busy:false});}
+  const fresh=circles.some(c=>!this.circleState.has(key(c)));
   this.circles=circles.map(c=>({...c,key:key(c)}));this.circleState=next;
+  // A new area on screen is fetched right away rather than on the next tick.
+  if(fresh&&this.running&&!this.paused)this.dispatch();
  }
  setFocus(id){this.focus=id;}
+ /** In the 3D view only the followed aircraft is refreshed: far fewer requests. */
+ setFocusOnly(on){this.focusOnly=on;}
  /** Seconds between refreshes wanted for the i-th circle (nearest the centre first). */
- interval(i){return i<1?1:i<3?2:i<8?4:8;}
+ interval(i){return i<1?1:i<3?2.5:i<8?5:10;}
  loop(){
   if(!this.running)return;
   if(!this.paused)this.dispatch();
@@ -52,17 +57,18 @@ export class LiveFeed{
    const job=this.nextJob(p);if(!job)continue;
    this.run(p,job);
   }
-  // OpenSky fills in when no readsb source is reachable or the view is wider than they can refresh.
+  // OpenSky is the fallback when every faster source is failing (it is slower and credit-limited).
   const os=this.reachable().find(p=>p.kind==='opensky');
-  if(os&&this.view){const h=this.health.get(os.id);const wide=this.circles.length>8;const noReadsb=!readsb.length||readsb.every(p=>['error','blocked','refused','limited'].includes(this.health.get(p.id).state));
-   if(!h.busy&&now>=h.nextAt&&(wide||noReadsb))this.runOpenSky(os);}
+  if(os&&this.view&&!this.focusOnly){const h=this.health.get(os.id);const noReadsb=!readsb.length||readsb.every(p=>['error','blocked','refused','limited'].includes(this.health.get(p.id).state));
+   if(!h.busy&&now>=h.nextAt&&noReadsb)this.runOpenSky(os);}
  }
  nextJob(p){
   const now=this.now();
   // The selected aircraft first, when it is not inside any circle refreshed in the last 2 s.
   if(this.focus&&!this.focus.startsWith('demo')){const f=this.flights.get(this.focus);const covered=f&&this.circles.some((c,i)=>i<3&&distance([c.lat,c.lon],[f.lat,f.lon])<c.nm*1852*.95);
    const st=this.circleState.get('focus')||{last:0,busy:false};this.circleState.set('focus',st);
-   if(!covered&&!st.busy&&now-st.last>=1.5)return {kind:'hex',id:this.focus,state:st};}
+   if((!covered||this.focusOnly)&&!st.busy&&now-st.last>=1.5)return {kind:'hex',id:this.focus,state:st};}
+  if(this.focusOnly)return null;
   let best=null,score=-Infinity;
   this.circles.forEach((c,i)=>{const st=this.circleState.get(c.key);if(!st||st.busy)return;const overdue=now-st.last-this.interval(i);if(overdue>=0&&overdue>score){score=overdue;best={kind:'area',circle:c,state:st};}});
   return best;
@@ -134,16 +140,31 @@ export class LiveFeed{
  list(){return [...this.flights.values()];}
  get(id){return this.flights.get(id)||null;}
  track(id){return this.tracks.get(id)||[];}
- /** Search every reachable provider for a callsign, registration or hex anywhere in the world. */
- async find(query){
-  const q=query.trim().toUpperCase();if(!q)return [];
-  const isHex=/^[0-9A-F]{6}$/.test(q),looksReg=/^[A-Z0-9]{1,3}-[A-Z0-9]{1,5}$|^N[0-9][0-9A-Z]{0,4}$/.test(q);
-  for(const p of this.reachable().filter(p=>p.kind==='readsb')){
-   const url=isHex?p.hex(q.toLowerCase()):looksReg&&p.reg?p.reg(q):p.callsign(q);
-   try{const {data}=await getJSON(url,{timeout:8000});const flights=normalizeADSB(data,this.now(),p.name);if(flights.length){this.ingest(flights);return flights.map(f=>f.id);}}catch{}
+ /** Look up aircraft anywhere in the world without adding them to the map. kind: callsign | reg | hex | type. */
+ async query(kind,value){
+  // A search is one request, so a source that is only pacing the map refresh (rate limited) is still tried, last.
+  const rank=p=>({ok:0,idle:0,error:1,limited:2})[this.health.get(p.id).state]??1;
+  const usable=this.reachable().filter(p=>p.kind==='readsb'&&p[kind==='reg'?'reg':kind]&&!['refused','blocked'].includes(this.health.get(p.id).state)).sort((a,b)=>rank(a)-rank(b));
+  if(!usable.length)throw new Error('No live source can be reached right now.');
+  let lastError=null;
+  for(const p of usable){
+   try{const {data}=await getJSON(p[kind==='reg'?'reg':kind](value),{timeout:kind==='type'?15000:8000});return normalizeADSB(data,this.now(),p.name);}
+   catch(err){lastError=err;if(err.status===429){const h=this.health.get(p.id);h.state='limited';h.nextAt=this.now()*1000+30000;}}
   }
-  return [];
+  if(lastError)throw lastError;return [];
  }
+ /** Every aircraft OpenSky sees worldwide (one request, cached for 90 s); used to list an airline's flights. */
+ async snapshot(){
+  if(this.snap&&this.now()-this.snap.t<90)return this.snap.flights;if(this.snapPending)return this.snapPending;
+  const os=this.reachable().find(p=>p.kind==='opensky');if(!os)throw new Error('Worldwide lists need the Aeris app or a data proxy.');
+  const credits=this.openSkyCredits();if(credits.used+4>OPENSKY_BUDGET)throw new Error('The worldwide list is used up for today. Try again tomorrow.');
+  this.snapPending=(async()=>{try{const {data}=await getJSON(os.all(),{timeout:20000,maxBytes:30_000_000});credits.used+=4;try{this.storage?.setItem('aeris-opensky',JSON.stringify(credits));}catch{}
+   const flights=normalizeOpenSky(data,this.now(),os.name);this.snap={t:this.now(),flights};return flights;}finally{this.snapPending=null;}})();
+  return this.snapPending;
+ }
+ /** Find one aircraft anywhere and add it to the map. Returns its id or null. */
+ async find(lookup){const flights=await this.query(lookup.kind,lookup.value);const f=flights.find(f=>f.lat!=null);if(!f)return null;this.ingest([f]);return f.id;}
+ add(f){this.ingest([f]);return f.id;}
  status(){
   const hs=[...this.health.values()];const reachable=new Set(this.reachable().map(p=>p.id));
   const live=hs.some(h=>h.state==='ok'&&this.now()-(h.lastOk||0)<20);

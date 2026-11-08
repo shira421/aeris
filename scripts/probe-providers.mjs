@@ -1,7 +1,7 @@
 // Checks every data source Aeris can use: reachability, latency, CORS headers for the
 // GitHub Pages origin, payload shape and freshness. Run in CI (open internet); prints a table.
 const ORIGIN='https://shira421.github.io';
-const UA='Aeris/0.2 (+https://github.com/shira421/aeris; provider probe)';
+const UA='Aeris/0.4 (+https://github.com/shira421/aeris; provider probe)';
 const lat=1.36,lon=103.99;
 const probes=[
  ['adsb.lol point','https://api.adsb.lol/v2/point/'+lat+'/'+lon+'/250','readsb'],
@@ -12,6 +12,11 @@ const probes=[
  ['adsb.lol London','https://api.adsb.lol/v2/point/51.47/-0.45/250','readsb'],
  ['airplanes.live New York','https://api.airplanes.live/v2/point/40.64/-73.78/250','readsb'],
  ['OpenSky bbox SEA','https://opensky-network.org/api/states/all?lamin=-1&lomin=101&lamax=4&lomax=106','opensky'],
+ ['adsb.lol type A388','https://api.adsb.lol/v2/type/A388','readsb'],
+ ['adsb.fi type A388','https://opendata.adsb.fi/api/v2/type/A388','readsb'],
+ ['adsb.lol callsign','https://api.adsb.lol/v2/callsign/SIA22','readsb'],
+ ['adsb.lol registration','https://api.adsb.lol/v2/reg/9V-SMU','readsb'],
+ ['OpenSky worldwide','https://opensky-network.org/api/states/all','opensky'],
  ['OpenSky track','https://opensky-network.org/api/tracks/all?icao24=76cdb5&time=0','other'],
  ['adsbdb callsign','https://api.adsbdb.com/v0/callsign/SIA22','other'],
  ['adsbdb aircraft','https://api.adsbdb.com/v0/aircraft/76CDB5','other'],

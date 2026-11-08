@@ -8,8 +8,8 @@ options:
   createIntermediateGroups: true
 settings:
   base:
-    MARKETING_VERSION: "0.3.0"
-    CURRENT_PROJECT_VERSION: "3"
+    MARKETING_VERSION: "0.4.0"
+    CURRENT_PROJECT_VERSION: "4"
     SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "15.0"
 targets:
@@ -44,7 +44,11 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        NSLocationWhenInUseUsageDescription: Aeris uses your location only when you tap Locate, to centre the map on aircraft near you.
+        NSLocationWhenInUseUsageDescription: Aeris shows your position on the map and starts the map near you. Your location stays on your device.
+        UIBackgroundModes:
+          - fetch
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.shira421.aeris.refresh
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.shira421.aeris

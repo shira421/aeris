@@ -46,3 +46,11 @@ export async function getJSON(url,{timeout=9000,signal,maxBytes=12_000_000}={}){
  let data;try{data=JSON.parse(text);}catch{throw new Error(host+' returned invalid JSON.');}
  return {data,status,ms,via,serverDate};
 }
+
+/** Ask the native app to do something (location, notifications, background watch list). */
+export async function nativeCall(action,payload={},timeout=30000){
+ const kind=bridge();
+ if(kind==='ios'){if(!g.webkit.messageHandlers.aerisDevice)throw new Error('Unavailable in this app version.');return g.webkit.messageHandlers.aerisDevice.postMessage({action,...payload});}
+ if(kind==='android'){if(!g.AerisNative.device)throw new Error('Unavailable in this app version.');return new Promise((resolve,reject)=>{const id='d'+(++seq);const timer=setTimeout(()=>{pending.delete(id);reject(new Error('No answer from the device.'));},timeout);pending.set(id,{resolve:r=>resolve(r?.value),reject,timer});g.AerisNative.device(id,JSON.stringify({action,...payload}));});}
+ throw new Error('No native app.');
+}

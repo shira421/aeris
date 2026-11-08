@@ -1,6 +1,6 @@
-# Aeris — a closer look at flight
+# Aeris
 
-Live aircraft worldwide on an accurate OpenStreetMap world map, with routes, airframe details and a 3D view over real terrain. Runs on iPhone, iPad, Android and desktop browsers. Original code; open data.
+A live flight tracker. Search for any flight in the air worldwide, save flights, aircraft and airports, and get alerts when a saved flight takes off or lands. Live positions on an OpenStreetMap world map, with routes, airframe details and a 3D view over real terrain. Runs on iPhone, iPad, Android and desktop browsers. Original code; open data.
 
 ## Install on iPhone or iPad
 
@@ -32,18 +32,19 @@ To give the Pages web app live data: create a Cloudflare API token (Workers edit
 
 **How fresh is it?** The area on screen is refreshed about once a second, alternating sources so each stays within its published limit (1 request per second for adsb.fi and airplanes.live). Measured from GitHub's runners: 120–240 ms per request; positions typically 0.3–0.6 s old when served. Between reports Aeris dead-reckons along the reported track and turn rate for at most 20 s, blends corrections in smoothly, marks positions stale after 15 s and removes them after 60 s. Polling pauses when the app is in the background.
 
-**Coverage** depends on volunteer receivers. Busy regions are dense; oceans and remote areas can be empty. Zoomed out beyond what the 250 NM point queries can refresh, OpenSky fills in (anonymous use: 400 credits a day, tracked by the app).
+**Coverage** depends on volunteer receivers. Busy regions are dense; oceans and remote areas can be empty. When you move the map to a new area, Aeris requests it straight away instead of waiting for the next cycle. OpenSky is used for airline lists and as a fallback when the other sources fail (anonymous use: 400 credits a day, tracked by the app).
 
 ## What it does
 
-- **Map:** MapLibre GL with OpenFreeMap vector tiles (OpenStreetMap data) at every zoom level, satellite imagery, a night style and a globe view. Offline fallback to bundled Natural Earth geography.
-- **Aircraft:** GPU-drawn silhouettes by class (wide-body, four-engine, narrow-body, regional, turboprop, business, light, helicopter, ground), coloured by altitude, rotated to the ground track.
-- **Details:** route checked against the aircraft's actual position and heading (mismatched database routes are hidden, not shown), progress along the route, airframe photo with photographer credit, registration, operator, owner, year built, published dimensions, telemetry including autopilot targets, QNH, wind, outside air temperature and position accuracy.
-- **Search:** callsign, registration, type, operator or airport; "Find worldwide" queries every live source for a flight anywhere.
+- **Search** is the main way around. It understands flight numbers (`SQ 22`, `SQ22`, `SIA22`), airline names, codes and radio callsigns (`Lufthansa`, `LH`, `DLH`, `Speedbird`), registrations (`9V-SMU`, `N123AB`), aircraft types and families (`A380`, `787`, `Dreamliner`) and airports (name, city, IATA or ICAO). Anything that names one aircraft is also looked up worldwide, so a flight on the other side of the world appears in the results and the map goes to it. An airline lists all its flights in the air (from OpenSky's worldwide list); an aircraft type lists every one flying.
+- **Saved:** flights (by flight number, so you can follow one before it departs), aircraft (by airframe) and airports. Turn on the bell for a flight to get alerts for take-off, approach (with time to landing), landing and emergency transponder codes. The apps check every minute while open and every 15 minutes or more in the background (iOS and Android decide exactly when). Browsers alert only while the page is open.
+- **Your location:** on first open Aeris asks whether to show your position; the map then starts there.
+- **Map:** MapLibre GL with OpenFreeMap vector tiles (OpenStreetMap data), satellite imagery, a night style and an optional globe. Map style and display options are in one menu on the map's right-hand toolbar. Offline fallback to bundled Natural Earth geography.
+- **Aircraft:** GPU-drawn silhouettes by class, coloured by altitude, rotated to the ground track. Only the aircraft on screen are drawn; the update rate drops as the count rises.
+- **Details:** flight number and airline, route checked against the aircraft's actual position (mismatched database routes are hidden), progress and time to landing, airframe photo with credit, registration, operator, dimensions, and telemetry including autopilot targets, QNH, wind and position accuracy.
 - **Airports:** 6,045 airports from OurAirports with runways drawn to scale, local time and live traffic within 30 km.
-- **3D:** follow, orbit or cockpit view over real terrain (AWS Terrain Tiles) and satellite imagery, plus a close-up model view. Height comes from GNSS altitude corrected with the EGM96 geoid where reported, otherwise QNH-corrected pressure altitude.
-- **Models:** about 100 ICAO types with published length, span and height and their layout: engine count and position, wing height, T-tail, propellers, upper deck, rotorcraft. Unknown types use a model of the reported size category.
-- Saved flights, comparison, session replay, CSV export, metric or aviation units, demo scenario.
+- **3D:** follow, orbit or cockpit view over real terrain and satellite imagery, plus a close-up model view. While in 3D only the selected aircraft is fetched.
+- CSV export of a flight's track; feet/knots or metric units.
 
 ## Accuracy notes
 
@@ -61,11 +62,12 @@ npm test                # unit tests and server checks
 npm run test:browser    # headless Chrome at desktop and iPhone sizes, feeds mocked
 npm run test:live       # real providers, tiles, routes and 3D (needs internet)
 npm run data            # rebuild airports and the geoid grid from their sources
+node scripts/build-airlines.mjs   # rebuild the airline list
 npm run models          # export GLB models for common types
 ```
 
-Layout: `src/live.js` (polling engine), `src/providers.js`, `src/net.js` (native bridge / proxy / fetch), `src/core.ts` (parsing, prediction, geodesy, route check), `src/worldmap.js` and `src/model-layer.js` (map and 3D), `src/types.js` and `src/aircraft.js` (type catalogue and models), `src/geo.js` (geoid), `src/airports.js`, `src/enrich.js`, `src/app.js` (UI). Native shells: `ios/` (XcodeGen, WKWebView) and `android/`. CI: `.github/workflows/`.
+Layout: `src/live.js` (polling engine and worldwide lookups), `src/providers.js`, `src/net.js` (native bridge / proxy / fetch), `src/search.js` (what a query means: flight numbers, airlines, types, registrations), `src/collection.js` (saved items and alert rules), `src/device.js` (location and notifications), `src/core.ts` (parsing, prediction, geodesy, route check), `src/worldmap.js` and `src/model-layer.js` (map and 3D), `src/types.js` and `src/aircraft.js` (type catalogue and models), `src/geo.js` (geoid), `src/airports.js`, `src/enrich.js`, `src/app.js` (UI). Native shells: `ios/` (XcodeGen, WKWebView; `DeviceBridge.swift` for location and notifications, `FlightWatcher.swift` for background checks) and `android/` (`FlightWatch.java` and `FlightCheckJob.java`). CI: `.github/workflows/`.
 
 ## Licences and credits
 
-Application code, logo and models: MIT (`LICENSE`). Three.js r160 (MIT, vendored) and MapLibre GL JS (BSD-3-Clause). Map data © OpenStreetMap contributors via OpenFreeMap and OpenMapTiles; satellite imagery © Esri, Maxar, Earthstar Geographics and the GIS User Community; terrain from AWS Terrain Tiles. Airports: OurAirports (public domain) with time zones from mwgg/Airports (MIT). Geoid: NGA EGM96 (public domain) via OSGeo proj-datumgrid. Live data under each provider's terms (adsb.lol data is ODbL 1.0). Routes and airframes: adsbdb, hexdb. Photos: Planespotters.net, credited to each photographer. Offline geography: Natural Earth and DataMaps (`data/DATAMAPS-LICENSE.txt`).
+Application code, logo and models: MIT (`LICENSE`). Three.js r160 (MIT, vendored) and MapLibre GL JS (BSD-3-Clause). Map data © OpenStreetMap contributors via OpenFreeMap and OpenMapTiles; satellite imagery © Esri, Maxar, Earthstar Geographics and the GIS User Community; terrain from AWS Terrain Tiles. Airports: OurAirports (public domain) with time zones from mwgg/Airports (MIT). Airlines: OpenFlights (ODbL 1.0) with corrections. Geoid: NGA EGM96 (public domain) via OSGeo proj-datumgrid. Live data under each provider's terms (adsb.lol data is ODbL 1.0). Routes and airframes: adsbdb, hexdb. Photos: Planespotters.net, credited to each photographer. Offline geography: Natural Earth and DataMaps (`data/DATAMAPS-LICENSE.txt`).

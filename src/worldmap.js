@@ -47,13 +47,13 @@ const ALT_COLOR=['interpolate',['linear'],['get','a'],-1,'#8e9ea0',0,'#c39a2c',4
 export class WorldMap{
  constructor(container,{onSelect,onAirport,onMove,onReady,onStyle,onError}={}){
   this.container=container;this.onSelect=onSelect;this.onAirport=onAirport;this.onMove=onMove;this.onReady=onReady;this.onStyle=onStyle;this.onError=onError;
-  this.labels=true;this.trails=true;this.airports=true;this.altitudeColors=true;this.styleName='map';this.projection='globe';
+  this.labels=true;this.trails=true;this.airports=true;this.altitudeColors=true;this.styleName='map';this.projection='mercator';this.meData=null;
   this.selected=null;this.flightsData={type:'FeatureCollection',features:[]};this.airportData=null;this.routeData=null;this.trailData=null;
   this.mode='map';this.cam={mode:'chase',bearing:0,pitch:72,zoom:17.6,dist:null};this.ok=false;this.styleFailed=false;
   const saved=readView();
   try{
    this.map=new maplibregl.Map({container,style:STYLES.map(),center:saved?.center||[103.99,1.36],zoom:saved?.zoom??6.6,attributionControl:false,maxPitch:85,
-    canvasContextAttributes:{antialias:true,preserveDrawingBuffer:false},fadeDuration:120,renderWorldCopies:true,pixelRatio:Math.min(globalThis.devicePixelRatio||1,2)});
+    canvasContextAttributes:{antialias:true,preserveDrawingBuffer:false},fadeDuration:0,renderWorldCopies:true,pixelRatio:Math.min(globalThis.devicePixelRatio||1,2)});
   }catch(err){this.map=null;onError?.('The map needs WebGL, which is unavailable here. Flight details still work.');return;}
   this.ok=true;this.model=new ModelLayer();
   const m=this.map;
@@ -90,7 +90,7 @@ export class WorldMap{
   for(const [name,path] of Object.entries(SHAPES))if(!m.hasImage('ac-'+name))m.addImage('ac-'+name,ICONS[name]||(ICONS[name]=silhouette(path)),{sdf:true,pixelRatio:2});
   const hasGlyphs=Boolean(m.getStyle().glyphs);
   const src=(id,data,extra={})=>{if(!m.getSource(id))m.addSource(id,{type:'geojson',data,...extra});};
-  src('route',this.routeData||empty());src('trail',this.trailData||empty(),{lineMetrics:true});src('airports',this.airportData||empty());src('flights',this.flightsData,{promoteId:'id'});src('selected',empty());
+  src('route',this.routeData||empty());src('trail',this.trailData||empty(),{lineMetrics:true});src('airports',this.airportData||empty());src('flights',this.flightsData,{promoteId:'id'});src('selected',empty());src('me',this.meData||empty());
   const add=layer=>{if(!m.getLayer(layer.id))m.addLayer(layer);};
   add({id:'route-done',type:'line',source:'route',filter:['==',['get','part'],'done'],paint:{'line-color':'#d96f49','line-width':1.4,'line-opacity':.45}});
   add({id:'route-next',type:'line',source:'route',filter:['==',['get','part'],'next'],paint:{'line-color':'#d96f49','line-width':1.6,'line-dasharray':[2,2.5],'line-opacity':.8}});
@@ -106,6 +106,8 @@ export class WorldMap{
   add({id:'selected-halo',type:'circle',source:'selected',paint:{'circle-radius':['interpolate',['linear'],['zoom'],2,10,10,20],'circle-color':'rgba(217,111,73,.14)','circle-stroke-color':'rgba(217,111,73,.55)','circle-stroke-width':1,'circle-pitch-alignment':'map'}});
   add({id:'selected-icon',type:'symbol',source:'selected',layout:{'icon-image':['concat','ac-',['get','c']],'icon-rotate':['get','t'],'icon-rotation-alignment':'map','icon-pitch-alignment':'map','icon-allow-overlap':true,'icon-ignore-placement':true,'icon-size':sizeByZoom([[1,.47],[4,.59],[7,.83],[10,1.12],[14,1.48]])},paint:{'icon-color':'#d96f49','icon-halo-color':'#ffffff','icon-halo-width':1.4,'icon-opacity':['case',['==',['get','m'],1],0,1]}});
   if(hasGlyphs)add({id:'selected-label',type:'symbol',source:'selected',layout:{'text-field':['get','cs'],'text-font':FONT_BOLD,'text-size':11,'text-offset':[1.6,0],'text-anchor':'left','text-allow-overlap':true,'text-ignore-placement':true},paint:{'text-color':'#ffffff','text-halo-color':'#143b3b','text-halo-width':2.2,'text-opacity':['case',['==',['get','m'],1],0,1]}});
+  add({id:'me-accuracy',type:'circle',source:'me',paint:{'circle-radius':['interpolate',['exponential',2],['zoom'],0,0,20,['/',['get','acc'],0.075]],'circle-color':'rgba(47,128,237,.12)','circle-stroke-color':'rgba(47,128,237,.35)','circle-stroke-width':1,'circle-pitch-alignment':'map'}});
+  add({id:'me',type:'circle',source:'me',paint:{'circle-radius':6,'circle-color':'#2f80ed','circle-stroke-color':'#ffffff','circle-stroke-width':2.5}});
   if(!m.getLayer(this.model.id))m.addLayer(this.model);
   this.applyLayerToggles();
   if(this.mode!=='map')this.enableTerrain();
@@ -143,6 +145,8 @@ export class WorldMap{
   this.routeData={type:'FeatureCollection',features:at?[line([origin.lat,origin.lon],at,'done'),line(at,[dest.lat,dest.lon],'next')]:[line([origin.lat,origin.lon],[dest.lat,dest.lon],'next')]};
   this.map.getSource('route')?.setData(this.routeData);
  }
+ /** Your own position, as a blue dot with its accuracy circle. */
+ setMe(p){this.meData=p?{type:'FeatureCollection',features:[{type:'Feature',properties:{acc:Math.max(10,p.accuracy||50)},geometry:{type:'Point',coordinates:[p.lon,p.lat]}}]}:empty();this.map?.getSource('me')?.setData(this.meData);}
  setAirports(geojson){this.airportData=geojson;this.map?.getSource('airports')?.setData(geojson);}
  hit(point,radius){
   if(!this.map||!this.map.getLayer('flights'))return null;

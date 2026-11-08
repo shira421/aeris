@@ -8,7 +8,7 @@ const host=process.env.HOST||'127.0.0.1';
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.webmanifest':'application/manifest+json','.json':'application/json','.geojson':'application/geo+json','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon'};
 // Flight-data hosts the proxy may forward to. Nothing else is reachable through it.
 export const ALLOWED_HOSTS=new Set(['api.adsb.lol','api.airplanes.live','opendata.adsb.fi','opensky-network.org','api.adsbdb.com','api.planespotters.net','hexdb.io']);
-const UA='Aeris/0.2 (+https://github.com/shira421/aeris; local proxy)';
+const UA='Aeris/0.4 (+https://github.com/shira421/aeris; local proxy)';
 const cache=new Map();// url → {t, status, body, date}: absorbs duplicate requests within one second
 async function forward(target){
  const hit=cache.get(target);if(hit&&Date.now()-hit.t<1000)return hit;
