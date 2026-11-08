@@ -1,6 +1,6 @@
 // App shell: cached on install, network-first for pages. Map tiles, fonts and sprites:
 // served from cache when present and refreshed in the background (bounded cache).
-const CACHE='aeris-48156ec4093f',TILES='aeris-tiles-v1',MAX_TILES=1500;
+const CACHE='aeris-1614a72a8dbe',TILES='aeris-tiles-v1',MAX_TILES=1500;
 const FILES=['./','index.html','app.js','style.css','airports.json','manifest.webmanifest','icons/icon-180.png','icons/icon-192.png','icons/icon-512.png','icons/icon-maskable-512.png'];
 const TILE_HOSTS=['tiles.openfreemap.org','server.arcgisonline.com','s3.amazonaws.com'];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(FILES)).then(()=>self.skipWaiting()));});

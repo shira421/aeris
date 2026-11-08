@@ -1,19 +1,30 @@
-# Validation record — 8 November 2026
+# Validation record — v0.3.0, 8 November 2026
 
-| Check | Result | Scope |
+| Check | Result | How |
 |---|---|---|
-| Build | Pass | Self-contained HTML and multi-file static distribution |
-| Core tests | 10 passed, 0 failed | WGS84/local frames, dateline motion, missing/zero fields, source timestamps, stale prediction, invalid inputs, regional geometry, model bounds and takeoff/landing scenarios |
-| DOM integration | Pass | Search, selection, saved flights, comparison, definitions, filter validation, airport detail, telemetry, replay, mocked live transition and demo restoration |
-| Server checks | Pass | HTML/JS/CSS/manifest/service worker routes, path traversal rejection, unsupported methods |
-| GLB containers | Pass | Four GLB 2.0 binary containers with embedded mesh geometry; not a full Khronos validator run |
-| Map pixels | Inspected | Actual map drawing code rendered through native Canvas; not a browser screenshot |
-| Aircraft geometry | Inspected | Actual triangle geometry through diagnostic CPU rendering; does not validate WebGL lighting |
-| Full browser/GPU UI | Not completed | Preview browser failed to initialize in the environment |
-| Mobile physical devices | Not completed | No physical device testing available |
-| Actual live feed | Not validated | Execution-environment network access blocked the provider endpoint; mock tests are explicitly marked |
-| Cesium/photorealistic terrain | Not validated | No provider credentials/account were supplied |
-| Android wrapper | Source added; cloud build pending | The WebView shell and Gradle project require an Android SDK runner; this workspace has no Android SDK |
-| iOS distribution | PWA package only | GitHub Pages supports Safari Add to Home Screen; no signed IPA can be produced without Apple signing credentials |
+| Unit tests | 21 pass | `npm test`: parsing (readsb, OpenSky), merging, dead reckoning with turns, staleness limits, coverage circles (no gaps over Europe, North America, Asia–Pacific), great-circle routes across the antimeridian, route check, EGM96 geoid values, altitude basis, type catalogue, model dimensions for 12 types, live-engine scheduling and rate spacing, airport data, demo scenarios |
+| Server and proxy | Pass | Static files, airports file, path traversal, methods, and rejection of non-allowlisted, non-HTTPS and credentialed proxy targets |
+| Browser, desktop and iPhone sizes | Pass locally; CI run pending | Headless Chrome with software WebGL, feeds mocked: live mode via proxy, aircraft drawn, tap selection, route shown and checked, airframe and telemetry tabs, 3D follow/orbit/cockpit/model, airport search with runways to scale, dialogs, filters, demo switch, no page errors |
+| iOS app in the Simulator | Pass (iPhone 17 Pro, Xcode 16.4) | App launches, loads the bundled web app, real OpenStreetMap tiles render, **61–65 live aircraft around Singapore through the native bridge**, requests 116–176 ms, displayed data 0.4–0.9 s old |
+| iOS device build | Pass | Unsigned `Release-iphoneos` build packaged as IPA; signed export runs only when secrets exist (not exercised: no certificate configured) |
+| Android build | Pass | Debug APK with the native network bridge (not run on a device) |
+| Data sources from CI | Measured | adsb.lol and adsb.fi: HTTP 200, 120–240 ms, median position age 0.3–0.5 s, **no CORS headers**. airplanes.live: HTTP 403 from cloud IPs. OpenSky: works, CORS limited to its own site. adsbdb, hexdb, Planespotters, OpenFreeMap, Esri, AWS terrain: CORS open |
+| Rate limits | Adjusted | adsb.lol answered 429 after ~45 s at 0.5 requests/s from a shared runner; its spacing is now 1.6 s. Back-off is exponential per source |
 
-Run `npm install`, then `npm test` to rebuild and repeat automated checks. The DOM tests use LinkeDOM and native Canvas; they are not Playwright or browser visual tests. The three-dimensional scene still requires desktop/mobile browser testing before production claims are appropriate.
+## Fixed during validation
+
+- A hidden details drawer widened the page on phones (layout viewport 740 px on a 390 px screen), making dialogs overflow. It was present before this release.
+- The navigation bar shifted sideways as the live-status text changed width.
+- Map layer expressions rejected by MapLibre (zoom must be the outermost input) left the aircraft layer missing.
+- Polling never started when the first map style failed to load.
+
+## Not yet verified
+
+- Physical iPhone/Android devices: battery, thermal behaviour, memory on older phones, long sessions.
+- Sideload install of the IPA through SideStore/AltStore (the build is standard; signing is done by those tools).
+- The Cloudflare Worker proxy (code is included; it deploys only when Cloudflare secrets are set).
+- Coverage outside regions with volunteer receivers.
+
+## Dependency note
+
+`npm audit` reports GHSA-jrc7-96c5-q579 for every MapLibre GL JS release up to 6.4.0: a bypass in `DOM.sanitize`. In MapLibre 5.24 that function is used only by the attribution control, which Aeris disables (credits are rendered by the app from fixed strings). Popups are not used. Aeris stays on 5.24 because 6.x loads its worker as a separate module file, which the self-contained offline file and WKWebView setup do not support yet. Revisit when moving to 6.x.

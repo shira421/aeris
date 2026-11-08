@@ -7,7 +7,7 @@ import {
   normalizeOpenSky,
   predicted,
   quality
-} from "./chunk-JBDCKWCY.js";
+} from "./chunk-GS7HUSXL.js";
 import {
   getJSON,
   route
@@ -187,7 +187,7 @@ var LiveFeed = class {
     let best = null, score = -Infinity;
     this.circles.forEach((c, i) => {
       const st = this.circleState.get(c.key);
-      if (!st || st.busy || c.nm > p.maxRadius) return;
+      if (!st || st.busy) return;
       const overdue = now - st.last - this.interval(i);
       if (overdue >= 0 && overdue > score) {
         score = overdue;
@@ -201,7 +201,7 @@ var LiveFeed = class {
     h.busy = true;
     h.lastUsed = this.now();
     job.state.busy = true;
-    const url = job.kind === "hex" ? p.hex(job.id) : p.area(job.circle);
+    const url = job.kind === "hex" ? p.hex(job.id) : p.area({ ...job.circle, nm: Math.min(job.circle.nm, p.maxRadius) });
     try {
       const { data, ms, serverDate } = await getJSON(url, { timeout: 8e3 });
       const flights = normalizeADSB(data, this.now(), p.name);

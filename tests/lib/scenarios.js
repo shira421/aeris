@@ -8,8 +8,8 @@ import {
   sampleFlight,
   sampleTakeoff,
   scenarioTrack
-} from "./chunk-7KOOTI6S.js";
-import "./chunk-JBDCKWCY.js";
+} from "./chunk-OWLWEMHF.js";
+import "./chunk-GS7HUSXL.js";
 import "./chunk-WFOFGCSX.js";
 export {
   DEMO_DURATION,

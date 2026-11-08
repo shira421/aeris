@@ -64,12 +64,12 @@ export class LiveFeed{
    const st=this.circleState.get('focus')||{last:0,busy:false};this.circleState.set('focus',st);
    if(!covered&&!st.busy&&now-st.last>=1.5)return {kind:'hex',id:this.focus,state:st};}
   let best=null,score=-Infinity;
-  this.circles.forEach((c,i)=>{const st=this.circleState.get(c.key);if(!st||st.busy||c.nm>p.maxRadius)return;const overdue=now-st.last-this.interval(i);if(overdue>=0&&overdue>score){score=overdue;best={kind:'area',circle:c,state:st};}});
+  this.circles.forEach((c,i)=>{const st=this.circleState.get(c.key);if(!st||st.busy)return;const overdue=now-st.last-this.interval(i);if(overdue>=0&&overdue>score){score=overdue;best={kind:'area',circle:c,state:st};}});
   return best;
  }
  async run(p,job){
   const h=this.health.get(p.id);h.busy=true;h.lastUsed=this.now();job.state.busy=true;
-  const url=job.kind==='hex'?p.hex(job.id):p.area(job.circle);
+  const url=job.kind==='hex'?p.hex(job.id):p.area({...job.circle,nm:Math.min(job.circle.nm,p.maxRadius)});
   try{
    const {data,ms,serverDate}=await getJSON(url,{timeout:8000});
    const flights=normalizeADSB(data,this.now(),p.name);

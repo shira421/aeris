@@ -55,6 +55,8 @@ test('ADS-B millisecond timestamps are normalized without changing units',()=>{c
 test('invalid locations are rejected, on-ground altitude is not fabricated',()=>{const data={ac:[{hex:'a',lat:1,lon:1,alt_baro:'ground'},{hex:'b',lat:null,lon:1},{hex:'c',lat:91,lon:1},{hex:'d',lat:1,lon:190}]};const list=normalizeADSB(data,2000);assert.equal(list.length,1);assert.equal(list[0].onGround,true);assert.equal(list[0].altitude,null);assert.equal(quality(list[0],2000).status,'Unknown');});
 test('coverage circles cover the whole view with at most 250 NM radius each',()=>{
  const small=coverageCircles({west:103,east:105,south:0.5,north:2.2});assert.equal(small.length,1);assert.ok(small[0].nm>=25&&small[0].nm<=250);
+ // Views just under the limit must never ask for more than a provider allows.
+ for(let w=4;w<=9;w+=.05){const cs=coverageCircles({west:104-w/2,east:104+w/2,south:1.36-w*.42,north:1.36+w*.42});assert.ok(cs.every(c=>c.nm<=250),'radius '+cs.map(c=>c.nm)+' at width '+w.toFixed(2));}
  const box={west:-10,east:30,south:35,north:60},cs=coverageCircles(box,250,200);assert.ok(cs.length>4);assert.ok(cs.every(c=>c.nm===250));
  // Every point of a grid inside the box lies within some circle.
  for(let lat=35;lat<=60;lat+=1.25)for(let lon=-10;lon<=30;lon+=1.25)assert.ok(cs.some(c=>distance([c.lat,c.lon],[lat,lon])<=c.nm*NM*1.001),`uncovered ${lat},${lon}`);

@@ -115,7 +115,7 @@ export function coverageCircles(bounds:{west:number,south:number,east:number,nor
  const cLat=(south+north)/2,cLon=wrapLon((west+east)/2);
  const corners:[number,number][]=[[south,west],[south,east],[north,west],[north,east],[cLat,west],[cLat,east],[south,cLon],[north,cLon]];
  const reach=Math.max(...corners.map(c=>distance([cLat,cLon],c)))/NM;
- if(reach<=maxRadius)return [{lat:+cLat.toFixed(3),lon:+cLon.toFixed(3),nm:Math.max(25,Math.ceil(reach*1.05))}];
+ if(reach*1.05<=maxRadius)return [{lat:+cLat.toFixed(3),lon:+cLon.toFixed(3),nm:Math.max(25,Math.ceil(reach*1.05))}];
  // Hexagonal packing: circles of radius r cover the plane with row spacing 1.5r and column spacing sqrt(3)r.
  // Packed at 88% of the query radius so the circles still overlap on a curved Earth.
  const rKm=.88*maxRadius*NM/1000,dLat=1.5*rKm/111.2,out:{lat:number,lon:number,nm:number,d:number}[]=[];let row=0;
