@@ -1,4 +1,4 @@
-name: Deploy demo to GitHub Pages
+name: Deploy web app to GitHub Pages
 
 on:
   push:
@@ -20,6 +20,9 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,14 +30,22 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Browsers cannot read public ADS-B feeds directly (no CORS headers). With these two
+      # secrets set, a free Cloudflare Worker proxy is deployed and the web app uses it.
+      - name: Deploy the data proxy (only when Cloudflare secrets are set)
+        id: proxy
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        run: |
+          out=$(npx --yes wrangler@4 deploy --config worker/wrangler.toml 2>&1) || { echo "$out"; exit 1; }
+          echo "$out"
+          echo "url=$(echo "$out" | grep -oE 'https://[a-z0-9.-]+\.workers\.dev' | head -1)" >> "$GITHUB_OUTPUT"
       - run: npm run build
+        env:
+          AERIS_PROXY_URL: ${{ steps.proxy.outputs.url || vars.AERIS_PROXY_URL }}
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-

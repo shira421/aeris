@@ -132,9 +132,16 @@ jobs:
           xcrun simctl boot "$DEVICE" || true
           xcrun simctl bootstatus "$DEVICE" -b
           xcrun simctl install "$DEVICE" simbuild/Build/Products/Release-iphonesimulator/Aeris.app
+          START=$(date +%s)
           xcrun simctl launch --console-pty "$DEVICE" com.shira421.aeris -AerisSelfTest > ../selftest.log 2>&1 &
-          sleep 60
+          sleep 15
+          xcrun simctl io "$DEVICE" screenshot ../ios-early.png || true
+          sips -Z 500 ../ios-early.png --out ../ios-early-s.png >/dev/null && sips -s format jpeg -s formatOptions 45 ../ios-early-s.png --out ../ios-early.jpg >/dev/null && echo "QA_SHOT ios-15s $(base64 -i ../ios-early.jpg | tr -d '\n')" || true
+          sleep 45
           xcrun simctl io "$DEVICE" screenshot ../ios-simulator.png || true
+          echo "--- running processes"; xcrun simctl spawn "$DEVICE" launchctl list | grep -i aeris || echo "Aeris is not running"
+          echo "--- crash reports"; find ~/Library/Logs/DiagnosticReports -newermt "@$START" -iname '*Aeris*' -print -exec head -c 6000 {} \; 2>/dev/null || true
+          echo "--- system log"; xcrun simctl spawn "$DEVICE" log show --start "$(date -r $START '+%Y-%m-%d %H:%M:%S')" --style compact --predicate 'process == "Aeris" OR (process CONTAINS "WebContent" AND messageType >= 16) OR eventMessage CONTAINS[c] "aeris"' 2>/dev/null | grep -v '^Timestamp' | tail -120 || true
           xcrun simctl terminate "$DEVICE" com.shira421.aeris || true
           cat ../selftest.log
           sips -Z 700 ../ios-simulator.png --out ../ios-small.png >/dev/null && sips -s format jpeg -s formatOptions 50 ../ios-small.png --out ../ios-small.jpg >/dev/null && echo "QA_SHOT ios-simulator $(base64 -i ../ios-small.jpg | tr -d '\n')" || true

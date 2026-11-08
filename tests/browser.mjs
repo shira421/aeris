@@ -36,15 +36,15 @@ async function routes(context){
  if(!process.env.AERIS_LIVE_TILES)await context.route(/tiles\.openfreemap\.org|arcgisonline\.com|elevation-tiles-prod/,route=>route.abort());
 }
 const browser=await chromium.launch({executablePath:chrome,headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist','--enable-webgl']});
-const errors=[];let page;
-const step=async(name,fn)=>{process.stdout.write('· '+name+' … ');const t=Date.now();await fn();console.log('ok ('+(Date.now()-t)+' ms)');};
+const errors=[],consoleLog=[];let page;
+const step=async(name,fn)=>{process.stdout.write('· '+name+' … ');const t=Date.now();try{await fn();}catch(err){console.log('FAILED');console.log('state:',JSON.stringify(await page.evaluate(()=>window.__aerisSelfTest?.()).catch(e=>'unavailable: '+e.message)));console.log('webgl:',await page.evaluate(()=>{const c=document.createElement('canvas');const g=c.getContext('webgl2')||c.getContext('webgl');return g?g.getParameter(g.VERSION)+' / '+(g.getExtension('WEBGL_debug_renderer_info')?g.getParameter(g.getExtension('WEBGL_debug_renderer_info').UNMASKED_RENDERER_WEBGL):''):'none';}).catch(e=>e.message));console.log('console:\n'+consoleLog.slice(-25).join('\n'));throw err;}console.log('ok ('+(Date.now()-t)+' ms)');};
 const self=()=>page.evaluate(()=>window.__aerisSelfTest());
 try{
  for(const viewport of [{width:1280,height:800,name:'desktop'},{width:390,height:844,name:'iphone',mobile:true}]){
   const context=await browser.newContext({viewport:{width:viewport.width,height:viewport.height},deviceScaleFactor:1,isMobile:Boolean(viewport.mobile),hasTouch:Boolean(viewport.mobile)});
   await routes(context);page=await context.newPage();
   page.on('pageerror',err=>errors.push(viewport.name+': '+err.message));
-  page.on('console',msg=>{if(msg.type()==='error'&&!/Failed to load resource|net::ERR_FAILED|AJAXError|Failed to fetch|NetworkError|tiles\.openfreemap|arcgisonline|elevation-tiles/i.test(msg.text()))errors.push(viewport.name+' console: '+msg.text());});
+  page.on('console',msg=>{consoleLog.push(msg.type()+': '+msg.text().slice(0,300));if(msg.type()==='error'&&!/Failed to load resource|net::ERR_FAILED|AJAXError|Failed to fetch|NetworkError|tiles\.openfreemap|arcgisonline|elevation-tiles/i.test(msg.text()))errors.push(viewport.name+' console: '+msg.text());});
   await step(viewport.name+': app loads in live mode through the proxy',async()=>{await page.goto(BASE+'/');await page.waitForFunction(()=>window.__aerisSelfTest?.().onMap>20,null,{timeout:25000});const s=await self();assert.equal(s.mode,'live');assert.ok(s.map,'map initialised');assert.match(s.source,/LIVE/);});
   await step(viewport.name+': aircraft render on the map',async()=>{await page.waitForTimeout(1500);const rendered=await page.evaluate(()=>window.__aeris.map.map.queryRenderedFeatures({layers:['flights']}).length);assert.ok(rendered>10,'rendered aircraft symbols: '+rendered);await page.screenshot({path:`qa/${viewport.name}-map.png`});});
   await step(viewport.name+': tapping an aircraft opens its details, route and type',async()=>{

@@ -1,6 +1,6 @@
 {
   "name": "aeris-flight-explorer",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Live aircraft worldwide on an accurate MapLibre world map, with honest data and real-terrain 3D.",
