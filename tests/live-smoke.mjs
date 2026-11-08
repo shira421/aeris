@@ -24,7 +24,9 @@ try{
   const t0=Date.now();await page.waitForFunction(()=>window.__aerisSelfTest().aircraft>5,null,{timeout:45000});
   report[name+' first aircraft (ms)']=Date.now()-t0;
   await page.waitForTimeout(6000);
-  const s=await page.evaluate(()=>{const st=window.__aerisSelfTest();const live=window.__aeris.live;const now=Date.now()/1000;const ages=live.list().map(f=>now-f.positionTime).sort((a,b)=>a-b);return {...st,medianAge:ages[ages.length>>1],tiles:window.__aeris.map.styleName,rendered:window.__aeris.map.map.queryRenderedFeatures({layers:['flights']}).length};});
+  // Freshness of what is on screen: aircraft that left the view stay in memory for a minute but are not drawn or refreshed.
+  const s=await page.evaluate(()=>{const st=window.__aerisSelfTest();const live=window.__aeris.live;const now=Date.now()/1000;const b=window.__aeris.map.map.getBounds();
+   const ages=live.list().filter(f=>b.contains([f.lon,f.lat])).map(f=>now-f.positionTime).sort((a,b)=>a-b);return {...st,medianAge:ages[ages.length>>1],tiles:window.__aeris.map.styleName,rendered:window.__aeris.map.map.queryRenderedFeatures({layers:['flights']}).length};});
   report[name]={aircraft:s.aircraft,rendered:s.rendered,medianPositionAgeS:+s.medianAge.toFixed(2),style:s.style,providers:s.providers.map(p=>`${p.id}:${p.state}${p.ms?' '+p.ms+'ms':''}${p.aircraft!=null?' '+p.aircraft+'ac':''}`).join(' | ')};
   await shot(page,'map-'+name);console.log('REGION '+JSON.stringify(report[name]));
   assert.equal(s.style,'map','OpenFreeMap style loaded (not the offline fallback)');assert.ok(s.rendered>5,'aircraft drawn');assert.ok(s.medianAge<6,`positions are fresh: ${s.medianAge} s · ${report[name].providers}`);
