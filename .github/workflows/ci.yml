@@ -11,6 +11,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -20,3 +21,19 @@ jobs:
       - run: npm ci
       - run: npm test
 
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Browser test (headless Chrome, mocked feeds)
+        run: npm run test:browser
+      - name: Live services check (real providers, tiles and routes)
+        continue-on-error: true
+        run: npm run test:live

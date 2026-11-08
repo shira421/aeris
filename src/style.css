@@ -24,3 +24,35 @@ button,a,input,select,.chip{touch-action:manipulation}
 .detail{padding-bottom:var(--sab)}
 dialog{max-height:calc(100dvh - 32px - var(--sat) - var(--sab))}
 @media(max-width:800px){.detail{top:calc(var(--topbar-h) + var(--sat));right:var(--sar)}}
+
+/* World map (MapLibre) and the real-world 3D view: the map stays visible in 3D; the
+   model studio covers it only when the Model camera is chosen. */
+.map-canvas{cursor:auto;background:#e5eef0}
+.map-canvas .maplibregl-canvas:focus-visible{outline:2px solid #dd7951;outline-offset:-4px}
+.scene-mode .map-canvas{visibility:visible}
+.scene-mode .scene-container{display:none}
+.studio-mode .scene-container{display:block;z-index:4}
+.scene-mode .scene-overlay{z-index:6}
+.map-title h1,.map-title p,.map-title .overline,.region-label{text-shadow:0 0 10px rgba(255,255,255,.9),0 0 2px rgba(255,255,255,.9)}
+.credits a{color:inherit}
+.credits span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.route-progress{height:3px;background:var(--line);border-radius:2px;margin:16px 0 7px;overflow:hidden}
+.route-progress span{display:block;height:100%;background:var(--orange);border-radius:2px}
+.route-meta{display:flex;justify-content:space-between;font-size:9px;color:var(--muted)}
+.airframe-photo{margin:0 0 18px;border-radius:10px;overflow:hidden;background:var(--soft);border:1px solid var(--line)}
+.airframe-photo img{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:cover}
+.airframe-photo figcaption{font-size:9px;color:var(--muted);padding:7px 10px}
+.airframe-photo figcaption a{color:inherit}
+.detail-caption .tag.alert{background:#f8e1da;color:#b4472a}
+.modal-body code{font-size:11px;word-break:break-all;background:var(--soft);padding:1px 4px;border-radius:4px}
+.source-buttons{flex-wrap:wrap}
+.scene-mode .scene-tag,.scene-mode .scene-caption,.scene-mode .scene-help,.scene-mode .credits{text-shadow:0 1px 2px rgba(8,28,36,.75),0 0 14px rgba(8,28,36,.45)}
+.scene-mode .credits{color:#f2f7f6}
+@media(max-width:800px){.map-context .chip:nth-child(3){display:flex}}
+/* Keep the navigation still while the live-status pill and clock change width. */
+.topbar{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}
+.top-actions{justify-self:end}
+.source-pill,.clock{font-variant-numeric:tabular-nums}
+/* The off-screen details drawer must not widen the page (mobile browsers would zoom out). */
+html,body{overflow:hidden;height:100%}
+@media(max-width:800px){.workspace{position:relative;overflow:hidden}.detail{top:0}}

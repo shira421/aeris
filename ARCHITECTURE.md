@@ -1,44 +1,48 @@
 # Aeris architecture
 
-## Implemented separation
-
 ```mermaid
 flowchart TD
-  Demo["Synthetic scenarios"] --> Normal["Typed flight state"]
-  Feed["Permitted ADS-B provider"] --> Proxy["Cached fixed-provider proxy"]
-  Proxy --> Normal
-  Normal --> Reports["Timestamped session history"]
-  Normal --> Regional["Regional Canvas map"]
-  Normal --> Spatial["Three.js local scene and globe"]
-  Normal --> Terrain["Optional Cesium terrain viewer"]
-  Reports --> Replay["Replay and CSV export"]
+  View["Map viewport"] --> Plan["Coverage circles ≤ 250 NM"]
+  Plan --> Engine["Live engine: round-robin, per-source limits, backoff"]
+  Engine --> Net["net.js: native bridge · proxy · fetch"]
+  Net --> P1["adsb.lol"] & P2["adsb.fi"] & P3["airplanes.live"] & P4["OpenSky (wide views)"]
+  P1 & P2 & P3 & P4 --> Norm["Normalise to one Flight shape"]
+  Norm --> Merge["Merge: freshest position wins, identity filled across sources"]
+  Merge --> Predict["Dead reckoning with turn rate, ≤ 20 s, smoothed corrections"]
+  Predict --> Map["MapLibre symbol layer (GPU)"]
+  Predict --> Model["3D model layer over terrain"]
+  Merge --> Tracks["Session tracks · replay · CSV"]
+  Select["Selected aircraft"] --> Enrich["adsbdb / hexdb routes · adsbdb airframe · Planespotters photo"]
+  Enrich --> Check["Route check against position and heading"]
 ```
 
-`src/core.ts` owns units, WGS84 transforms, geodesic motion, feed normalization and source age. The UI does not deduce missing routes or airspeed. `src/data.js` keeps synthetic examples separate from the live adapter.
+## Data
 
-`src/map.js` draws regional geometry with a Mercator latitude transform. Its scale ruler accounts for latitude. Map selection and search share the same flight identifiers. Default geography is deliberately generalised; it is not satellite imagery.
+- `src/providers.js` lists the sources, their URL builders, rate limits and terms. All readsb-style sources share one parser.
+- `src/live.js` turns the viewport into coverage circles (`coverageCircles` in `core.ts`, hexagonal packing with overlap), refreshes the nearest circles every 1–2 s and outer ones less often, and alternates sources so none exceeds its limit. The selected aircraft is fetched by hex when it is outside the refreshed area. OpenSky is used only for wide views or when the readsb sources fail, within a daily credit budget kept in local storage. Errors back off per source (429 → exponential, 403 → 10 minutes).
+- `src/core.ts` normalises readsb and OpenSky responses (feet, knots, ft/min; null when not reported), merges reports, predicts motion (`predicted`: constant-rate turn for up to 8 s, then straight, bounded to 20 s), checks routes (`routeFit`: cross-track distance, progress, heading) and builds great-circle lines that stay continuous across the antimeridian.
+- `src/net.js` chooses the path per host: the iOS `WKScriptMessageHandlerWithReply` bridge, the Android `@JavascriptInterface` bridge, a configured proxy, or direct fetch for hosts that send CORS headers (adsbdb, hexdb, Planespotters).
+- `src/enrich.js` caches lookups (routes 20 min, airframes 7 days, photos 3 days) in memory and local storage.
 
-`src/aircraft.js` builds a longitudinal body of revolution, continuous cambered/tapered wings, tail surfaces, turbofan nacelles and blades, windows and retractable display gear. Airframe envelope dimensions come from manufacturer reference figures. Models remain approximate; no copied model/livery asset is embedded. Four reusable GLB files are supplied in `models`.
+## Map and 3D
 
-`src/scene.js` uses a WGS84 east/up/south local frame in metres. It separates rendering from the reported state, respects reduced-motion preferences for camera damping, clamps pixel ratio, and offers a lower-cost rendering mode. It does not solve forces, control inputs or flight dynamics. Source-absent attitudes remain estimated. Camera controls are coupled to the aircraft position while orbiting, or detached for free movement.
+- `src/worldmap.js` hosts MapLibre GL JS v5 (OpenFreeMap styles, Esri satellite, globe projection). Aircraft are one GeoJSON source drawn as signed-distance-field icons recoloured on the GPU; positions are pushed at 4–9 Hz depending on how many are on screen, and only for the visible area. The selected aircraft has its own source updated every frame. If the tile service cannot be reached the map switches to bundled Natural Earth geography.
+- The 3D view reuses the same map: terrain from AWS Terrain Tiles, the camera placed with `calculateCameraOptionsFromTo` (follow) or `calculateCameraOptionsFromCameraLngLatAltRotation` (cockpit), and `src/model-layer.js` drawing the Three.js model in MapLibre's WebGL context via `getMatrixForModel`.
+- `src/geo.js` converts GNSS ellipsoid height to height above mean sea level with a 1° EGM96 grid (`data/geoid-1deg.bin`, under 2 m error at the 99th percentile), falls back to QNH-corrected pressure altitude, and keeps the model above terrain.
+- `src/types.js` is the type catalogue; `src/aircraft.js` builds an original parametric model from it and scales it to the published dimensions. `src/studio.js` is the close-up model view.
 
-`src/photoreal.js` is the optional higher-fidelity geography integration. It loads a pinned Cesium release, converts an original Three.js model to glTF, and positions it in Earth coordinates. It requests World Terrain and imagery and attempts Photorealistic 3D Tiles only within the account's permissions. Errors return the UI to the local scene. No provider token is stored on disk/localStorage.
+## Native shells
 
-`server.mjs` serves the prebuilt static app and one fixed upstream provider path. It is not an open URL proxy. Requests coalesce, successful data is cached for 15 seconds, and upstream errors receive backoff. The client displays disconnection and retains original report timestamps. Both network boundaries have explicit timeouts.
+- `ios/`: XcodeGen project, a `WKURLSchemeHandler` serving the bundled web app from `aeris://app/`, and the network bridge with a host allowlist. CI builds an unsigned IPA, a signed IPA when secrets exist, and runs the app in the iOS Simulator, printing its self-test and a screenshot.
+- `android/`: `WebViewAssetLoader` plus the same bridge.
 
-## Production work still needed
+## Proxies
 
-1. **Contract the data.** Choose a permitted provider for each product field: positions, extended Mode S, airframe registration metadata, schedules/routes, gate/terminal updates and weather. Define cache, attribution, redistribution and retention rules. Do not infer an airline schedule from a callsign alone.
-2. **Normalize altitude correctly.** Preserve ellipsoidal altitude, orthometric/geoid height and barometric altitude as separate values with conversion provenance. Align with terrain elevation before attempting credible runway contact. Handle receiver timestamps, clock skew and position accuracy metadata (NIC/NAC) where supplied.
-3. **Use a delayed render buffer.** For production tracks, interpolate reported ECEF positions and velocities with bounded acceleration/jerk, reject discontinuities and only extrapolate for a short explicit window. Estimate bank from coordinated-turn rate only when curvature/velocity estimates are robust; label that estimate. Real attitude or gear state is preferable when available.
-4. **Replace approximate assets.** Use properly licensed, inspected aircraft/rotorcraft models with LODs, animation rigs, verified dimensions and variant mapping. Reuse mesh families but do not present a generic twin jet as a specific helicopter or turboprop. Keep unknown/low-confidence matching visible.
-5. **Validate terrain end to end.** Test tile and elevation datum alignment, runway thresholds, terrain contact, geographic rebasing, ocean crossings and low-altitude occlusion. Photogrammetry alone is neither live nor globally complete.
-6. **Build scalable ingestion.** Move provider access and session archives into a backend with caching, budgets, observability and per-client limits; stream only viewport-relevant traffic. Use instancing and LOD on global scenes. The current 100 NM Singapore proxy is not a global ingestion service.
-7. **Test mobile devices.** Measure memory, thermal load, GPU support, battery, gestures, accessibility, lifecycle recovery, offline transitions and poor connectivity on actual iOS/Android devices. The included manifest is a web-app foundation, not an App Store/Play release.
-8. **Package native shells only after the vertical slice works.** Capacitor is a possible next step for the web build; native signing, OS permissions, release pipelines and store submissions are not included.
+`server.mjs` (local) and `worker/worker.js` (Cloudflare) forward GET requests to the same host allowlist only, with a one-second cache to merge duplicate requests.
 
-## Accuracy contract for the full product
+## Known limits
 
-Every field should carry value, units, observation time, provider, reporting basis and confidence/classification: observed, derived, interpolated, extrapolated, reference or unavailable. The UI should preserve this distinction through maps, camera modes, replay, alerts and exports. A visually convincing 3D frame is not evidence of an accurate state estimate.
-
-Further acceptance work: test WebGL context loss, long sessions, unknown aircraft variants, sparse receiver coverage, pressure/geometric altitude disagreements, delayed messages, large jumps, antimeridian crossings and aircraft disappearing between two snapshots. Successful compilation and DOM tests do not replace these tests.
+- Coverage and update rate depend on volunteer networks and their policies; adsb.lol says it may require API keys in future.
+- Session tracks only: there is no historical flight database.
+- Attitude, gear and airspeed are not available unless broadcast; estimates are labelled.
+- Physical-device performance on older phones has not been measured.

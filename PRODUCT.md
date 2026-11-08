@@ -4,20 +4,19 @@ Aeris is for curious passengers, aviation enthusiasts and people watching an arr
 
 The visual direction is a light cartographic workspace with restrained teal, warm orange selection, airy off-white panels and compact typography. Orange indicates the selected object or replay position. Connection state uses text as well as colour. The camera view is immersive; the information panel remains an optional companion.
 
-The current screen starts in Singapore because that makes the sample immediately relevant and allows coherent map, airport and approach examples. It is not an assertion of worldwide live coverage.
+The map opens on Singapore the first time, then remembers where you were. Live traffic works anywhere the community networks have receivers.
 
 ## Acceptance boundaries
 
-| Requirement | Current status | Production acceptance |
+| Requirement | Current status (v0.3.0) | Still to do |
 |---|---|---|
-| Search and inspect aircraft | Implemented; DOM tested | Search permitted global data, clearly distinguish active and historical records |
-| Rich telemetry | Optional fields preserved; missing values honest | Display measured IAS/TAS/Mach/wind/temperature where the contracted feed supplies them |
-| Aircraft and airport detail | Four aircraft families and four reference airports | Versioned global reference catalogs; schedules/NOTAMs from appropriate current feeds |
-| 3D camera | Implemented; geometry checked; browser verification outstanding | Real-device tested orbit/follow/forward/free controls; stable rendering and accessible fallbacks |
-| Takeoff and landing | Synthetic scenarios | Validate measured tracks and vertical datums against actual runway geometry; label missing attitude and gear |
-| Hyperreal surroundings | Optional provider integration, not exercised | Verified terrain/photogrammetry, licences, attribution, coverage and mobile performance |
-| iOS/Android | Responsive web/PWA foundation | Device QA, native wrapper if required, signing and distribution |
-| Paywall-independent functionality | Original code and an open-data adapter | Sustainable provider/storage/tile budgets; do not imply paid data is free |
+| Search and inspect aircraft | Live worldwide from four sources; search by callsign, registration, type, operator or hex, including worldwide lookup | Historical records |
+| Rich telemetry | IAS/TAS/Mach, autopilot targets, QNH, wind, OAT, accuracy, MLAT/ADS-B when broadcast | — |
+| Aircraft and airport detail | ~100 types with published dimensions; registry data and photos; 6,045 airports with runways to scale and live traffic | Schedules, gates, NOTAMs, weather |
+| Accurate map | OpenStreetMap vector tiles at every zoom, satellite, globe, night | Self-hosted tiles for guaranteed availability |
+| 3D | Real terrain and imagery; follow, orbit, cockpit and model views; geoid-corrected height | Device performance testing; liveries |
+| Latency | ~1 s refresh of the area on screen; 0.4–0.9 s data age measured in the iOS Simulator | A streaming source would need a commercial feed |
+| iOS / Android | Native shells built in CI; unsigned and signed IPA; APK | Store distribution; device QA |
 
 ## Bonus features implemented
 
