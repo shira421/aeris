@@ -142,7 +142,10 @@ export class LiveFeed{
  track(id){return this.tracks.get(id)||[];}
  /** Look up aircraft anywhere in the world without adding them to the map. kind: callsign | reg | hex | type. */
  async query(kind,value){
-  const usable=this.reachable().filter(p=>p.kind==='readsb'&&p[kind==='reg'?'reg':kind]&&!['limited','refused'].includes(this.health.get(p.id).state));
+  // A search is one request, so a source that is only pacing the map refresh (rate limited) is still tried, last.
+  const rank=p=>({ok:0,idle:0,error:1,limited:2})[this.health.get(p.id).state]??1;
+  const usable=this.reachable().filter(p=>p.kind==='readsb'&&p[kind==='reg'?'reg':kind]&&!['refused','blocked'].includes(this.health.get(p.id).state)).sort((a,b)=>rank(a)-rank(b));
+  if(!usable.length)throw new Error('No live source can be reached right now.');
   let lastError=null;
   for(const p of usable){
    try{const {data}=await getJSON(p[kind==='reg'?'reg':kind](value),{timeout:kind==='type'?15000:8000});return normalizeADSB(data,this.now(),p.name);}

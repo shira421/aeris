@@ -224,7 +224,7 @@ const section=(title,rows)=>rows?`<div class="result-section">${title}</div>${ro
 function resultRow(f,remote=false){if(remote)picks.set(f.id,f);const a=airlineFor(f.callsign);return `<button class="result" data-pick="${e(f.id)}">${icon('plane')}<span><b>${e(titleOf(f))}</b><small>${e([a?.name||f.operator||f.registration,f.type].filter(Boolean).join(' · ')||'Aircraft')}</small></span><span class="result-right">${f.onGround?'Ground':f.altitude!=null?fmt(f.altitude,'alt')+' '+unit('alt'):''}</span></button>`;}
 function renderSearch(){
  const q=state.search.q;
- if(state.search.results){const r=state.search.results;openResults(`<button class="result result-back" data-action="search-back">${icon('back')}<span><b>${e(r.title)}</b><small>${r.loading?'Searching worldwide…':`${r.flights.length} in the air${r.note?' · '+r.note:''}`}</small></span></button>${r.error?`<div class="empty">${e(r.error)}</div>`:''}${r.flights.slice(0,80).map(f=>resultRow(f,true)).join('')}${!r.loading&&!r.flights.length&&!r.error?'<div class="empty">None in the air right now.</div>':''}`);return;}
+ if(state.search.results){const r=state.search.results;openResults(`<button class="result result-back" data-action="search-back">${icon('back')}<span><b>${e(r.title)}</b><small>${r.loading?'Searching worldwide…':`${r.flights.length} in the air${r.note?' · '+r.note:''}`}</small></span></button>${r.error?`<div class="empty">${e(r.error)}</div>`:''}${r.flights.slice(0,80).map(f=>resultRow(f,true)).join('')}${r.flights.length>80?`<div class="result-status">${r.flights.length-80} more not shown. Search for a flight number to find one.</div>`:''}${!r.loading&&!r.flights.length&&!r.error?'<div class="empty">None in the air right now.</div>':''}`);return;}
  if(!q){const recents=loadPref('recent',[]),saved=collection.data.flights.slice(0,4);
   if(!recents.length&&!saved.length){closeSearch();return;}
   openResults(section('SAVED FLIGHTS',saved.map(x=>`<button class="result" data-saved-flight="${e(x.callsign)}">${icon('star')}<span><b>${e(x.label)}</b><small>${e(savedFlightStatus(x))}</small></span></button>`).join(''))+section('RECENT',recents.map(r=>`<button class="result" data-example="${e(r)}">${icon('search')}<span><b>${e(r)}</b></span></button>`).join('')));return;}
@@ -233,8 +233,9 @@ function renderSearch(){
  const lookups=directLookups(q),airlines=searchAirlines(q,3),types=searchTypes(q,2),airports=searchAirports(q,4);
  const loading=state.search.remote?.q===q&&state.search.remote.loading;
  const others=airlines.length+types.length+airports.length;
- const notFound=!loading&&state.search.remote?.q===q&&!local.length&&!remote.length&&lookups.length&&!others;
- const flights=local.map(f=>resultRow(f)).join('')+remote.map(f=>resultRow(f,true)).join('')+(loading?`<div class="result-status">Searching worldwide…</div>`:'')+(notFound?`<div class="result-status">${e(lookups[0].label)} is not in the air right now.</div>`:'');
+ const remoteError=state.search.remote?.q===q?state.search.remote.error:null;
+ const notFound=!loading&&!remoteError&&state.search.remote?.q===q&&!local.length&&!remote.length&&lookups.length&&!others;
+ const flights=local.map(f=>resultRow(f)).join('')+remote.map(f=>resultRow(f,true)).join('')+(loading?`<div class="result-status">Searching worldwide…</div>`:'')+(notFound?`<div class="result-status">${e(lookups[0].label)} is not in the air right now.</div>`:'')+(remoteError&&!local.length?`<div class="result-status">Worldwide search failed: ${e(remoteError)}</div>`:'');
  openResults(section('FLIGHTS',flights)+section('AIRLINES',airlines.map(a=>`<button class="result" data-airline="${a.icao}">${icon('airline')}<span><b>${e(a.name)}</b><small>${e([a.iata,a.icao,a.country].filter(Boolean).join(' · '))}</small></span><span class="result-right">Flights ›</span></button>`).join(''))+section('AIRCRAFT TYPES',types.map((t,i)=>`<button class="result" data-family="${i}">${icon('plane')}<span><b>${e(t.name)}</b><small>${e(t.codes.join(', '))}</small></span><span class="result-right">In the air ›</span></button>`).join(''))+section('AIRPORTS',airports.map(a=>`<button class="result" data-airport="${e(a.id)}">${icon('airport')}<span><b>${e(a.iata||a.icao)} · ${e(a.name)}</b><small>${e([a.city,a.country].filter(Boolean).join(', '))}</small></span></button>`).join(''))+(!flights&&!others?'<div class="empty">No matches. Try a flight number (SQ 22), an airline, a registration (9V-SMU), an aircraft type (A350) or an airport.</div>':''));
 }
 function onSearchInput(){
@@ -248,7 +249,8 @@ async function remoteSearch(q,lookups,seq){
  state.search.remote={q,loading:true,flights:[]};renderSearch();
  const settled=await Promise.allSettled(lookups.map(l=>live.query(l.kind,l.value)));if(seq!==searchSeq)return;
  const flights=[];for(const r of settled)if(r.status==='fulfilled')for(const f of r.value)if(f.lat!=null&&!flights.some(x=>x.id===f.id))flights.push(f);
- state.search.remote={q,loading:false,flights};if(state.search.q===q)renderSearch();
+ const failed=settled.every(r=>r.status==='rejected')?settled[0].reason?.message||'The live sources did not answer.':null;
+ state.search.remote={q,loading:false,flights,error:failed};if(state.search.q===q)renderSearch();
 }
 function remember(q){if(!q)return;const r=[q,...loadPref('recent',[]).filter(x=>x.toLowerCase()!==q.toLowerCase())].slice(0,6);savePref('recent',r);}
 async function showList(title,load,localFilter){

@@ -82,3 +82,16 @@ test('the watcher alerts on changes after a silent first check, and stays quiet 
   current=air({altitude:4000,verticalRate:0,squawk:'7700'});t+=60;w.quietNext();await w.check();assert.equal(sent.length,1);
  }finally{globalThis.setTimeout=orig;}
 });
+test('worldwide lookups try a rate-limited source last instead of giving up, and skip refused ones',async()=>{
+ const {LiveFeed}=await import('./lib/live.js');const {setProxy}=await import('./lib/net.js');
+ setProxy('http://proxy.test/p');const hosts=[];
+ globalThis.fetch=async url=>{const target=new URL(new URL(url).searchParams.get('url'));hosts.push(target.host+target.pathname);
+  if(target.host==='opendata.adsb.fi')return new Response('{}',{status:500});
+  return new Response(JSON.stringify({now:Date.now(),ac:[{hex:'3c6444',flight:'DLH400  ',lat:52,lon:-12,gs:480,track:290,alt_baro:37000,seen_pos:.5}]}),{status:200});};
+ const feed=new LiveFeed({});
+ feed.health.get('adsblol').state='limited';feed.health.get('airplaneslive').state='refused';
+ const found=await feed.query('callsign','DLH400');
+ assert.equal(found[0].id,'3c6444');assert.deepEqual(hosts,['opendata.adsb.fi/api/v2/callsign/DLH400','api.adsb.lol/v2/callsign/DLH400']);
+ feed.health.get('adsblol').state='refused';feed.health.get('adsbfi').state='blocked';
+ await assert.rejects(feed.query('callsign','DLH400'),/No live source/);
+});
