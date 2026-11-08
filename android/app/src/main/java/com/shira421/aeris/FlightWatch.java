@@ -156,10 +156,21 @@ final class FlightWatch {
         return summary;
     }
 
-    /** adsb.lol's answer for a callsign. Throws on network errors. */
+    /** The live sources' answer for a callsign: adsb.lol, or adsb.fi when adsb.lol is busy. Throws when neither answers. */
     private static JSONObject lookup(String callsign) throws Exception {
-        URL url = new URL("https://api.adsb.lol/v2/callsign/" + URLEncoder.encode(callsign, "UTF-8"));
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        Exception last = null;
+        for (String base : new String[] {"https://api.adsb.lol/v2/callsign/", "https://opendata.adsb.fi/api/v2/callsign/"}) {
+            try {
+                return fetchJson(base + URLEncoder.encode(callsign, "UTF-8"));
+            } catch (Exception error) {
+                last = error;
+            }
+        }
+        throw last;
+    }
+
+    private static JSONObject fetchJson(String address) throws Exception {
+        HttpURLConnection connection = (HttpURLConnection) new URL(address).openConnection();
         try {
             connection.setConnectTimeout(10000);
             connection.setReadTimeout(10000);

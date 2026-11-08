@@ -162,18 +162,22 @@ final class FlightWatcher {
         return ["rules": true, "items": items.count, "checked": checked, "alerts": alerts]
     }
 
-    /// adsb.lol's answer for a callsign (an empty list when it is not in the air), or nil on failure.
+    /// The live sources' answer for a callsign (an empty list when it is not in the air), or nil when
+    /// none answered. adsb.lol first, adsb.fi when adsb.lol is busy (it rate-limits shared addresses).
     private func fetch(_ callsign: String) -> String? {
-        guard let encoded = callsign.addingPercentEncoding(withAllowedCharacters: .alphanumerics),
-              let url = URL(string: "https://api.adsb.lol/v2/callsign/\(encoded)") else { return nil }
-        let done = DispatchSemaphore(value: 0)
-        var text: String?
-        session.dataTask(with: url) { data, response, _ in
-            if (response as? HTTPURLResponse)?.statusCode == 200, let data = data { text = String(data: data, encoding: .utf8) }
-            done.signal()
-        }.resume()
-        _ = done.wait(timeout: .now() + 16)
-        return text
+        guard let encoded = callsign.addingPercentEncoding(withAllowedCharacters: .alphanumerics) else { return nil }
+        for base in ["https://api.adsb.lol/v2/callsign/", "https://opendata.adsb.fi/api/v2/callsign/"] {
+            guard let url = URL(string: base + encoded) else { continue }
+            let done = DispatchSemaphore(value: 0)
+            var text: String?
+            session.dataTask(with: url) { data, response, _ in
+                if (response as? HTTPURLResponse)?.statusCode == 200, let data = data { text = String(data: data, encoding: .utf8) }
+                done.signal()
+            }.resume()
+            _ = done.wait(timeout: .now() + 16)
+            if let text = text { return text }
+        }
+        return nil
     }
 
     static func post(title: String, body: String, id: String, completion: @escaping (Error?) -> Void) {
