@@ -26,8 +26,8 @@ try{
   await page.waitForTimeout(6000);
   const s=await page.evaluate(()=>{const st=window.__aerisSelfTest();const live=window.__aeris.live;const now=Date.now()/1000;const ages=live.list().map(f=>now-f.positionTime).sort((a,b)=>a-b);return {...st,medianAge:ages[ages.length>>1],tiles:window.__aeris.map.styleName,rendered:window.__aeris.map.map.queryRenderedFeatures({layers:['flights']}).length};});
   report[name]={aircraft:s.aircraft,rendered:s.rendered,medianPositionAgeS:+s.medianAge.toFixed(2),style:s.style,providers:s.providers.map(p=>`${p.id}:${p.state}${p.ms?' '+p.ms+'ms':''}${p.aircraft!=null?' '+p.aircraft+'ac':''}`).join(' | ')};
-  assert.equal(s.style,'map','OpenFreeMap style loaded (not the offline fallback)');assert.ok(s.rendered>5,'aircraft drawn');assert.ok(s.medianAge<6,'positions are fresh: '+s.medianAge);
-  await shot(page,'map-'+name);
+  await shot(page,'map-'+name);console.log('REGION '+JSON.stringify(report[name]));
+  assert.equal(s.style,'map','OpenFreeMap style loaded (not the offline fallback)');assert.ok(s.rendered>5,'aircraft drawn');assert.ok(s.medianAge<6,`positions are fresh: ${s.medianAge} s · ${report[name].providers}`);
  }
  // Select an airline flight with a known route, check the route lookup and open 3D over real terrain.
  const pick=await page.evaluate(async()=>{const list=window.__aeris.live.list().filter(f=>/^[A-Z]{3}\d/.test(f.callsign)&&!f.onGround&&f.altitude>3000).sort((a,b)=>a.altitude-b.altitude);for(const f of list.slice(0,12)){window.__aeris.selectFlight(f.id,{fly:true});for(let i=0;i<20&&window.__aeris.state.info.loading!==undefined&&window.__aeris.state.info.loading;i++)await new Promise(r=>setTimeout(r,300));await new Promise(r=>setTimeout(r,1500));const info=window.__aeris.state.info;if(info.route)return {callsign:f.callsign,type:f.type,route:`${info.route.origin.iata||info.route.origin.icao}-${info.route.destination.iata||info.route.destination.icao}`,photo:Boolean(info.photo),registration:info.aircraft?.registration||f.registration,detail:document.querySelector('.route-status').textContent};}return null;});
