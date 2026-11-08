@@ -74,6 +74,8 @@ try{
    await page.screenshot({path:`qa/${viewport.name}-3d-follow.png`});
    for(const cam of ['orbit','cockpit','model']){await page.click(`[data-camera="${cam}"]`);await page.waitForTimeout(1500);await page.screenshot({path:`qa/${viewport.name}-3d-${cam}.png`});}
    assert.ok(await page.evaluate(()=>window.__aeris.state.studio),'model studio open');
+   const cells=await page.evaluate(()=>[...document.querySelectorAll('.camera-bar button')].map(b=>{const r=b.getBoundingClientRect(),i=b.querySelector('svg').getBoundingClientRect();return {w:Math.round(r.width),h:Math.round(r.height),icon:i.width>0&&i.height>0,label:b.textContent.trim()};}));
+   assert.deepEqual(cells.map(c=>c.label),['Follow','Orbit','Cockpit','Model']);assert.ok(cells.every(c=>c.icon),'every camera button shows its icon');assert.equal(new Set(cells.map(c=>c.w)).size,1,'equal cells');
    await page.click('[data-action="map"]');await page.waitForFunction(()=>!window.__aerisSelfTest().view3d);});
   await step(viewport.name+': search finds airports and opens runways to scale',async()=>{
    await page.fill('#search','SIN');await page.waitForSelector('#search-results [data-airport]');await page.click('#search-results [data-airport="SIN"]');
@@ -97,10 +99,38 @@ try{
    await page.waitForFunction(()=>{const c=window.__aeris.map.map.getCenter();return Math.abs(c.lat-52.9)<2&&Math.abs(c.lng+12.4)<3;},null,{timeout:10000});
    assert.match(await page.textContent('#detail'),/LH 400/);
    await page.click('#detail [data-action="save-flight"]');await page.waitForFunction(()=>window.__aeris.collection.flight('DLH400'));
-   await page.click('#detail [data-action="notify-flight"]');await page.waitForFunction(()=>window.__aeris.collection.flight('DLH400')?.notify===true,null,{timeout:5000});
+   await page.click('#detail [data-action="notify-flight"]');await page.waitForSelector('#dialog[open] [data-alert-mode="every"]');assert.match(await page.textContent('#dialog'),/Next flight/);
+   await page.click('#dialog [data-alert-mode="every"]');await page.waitForFunction(()=>window.__aeris.collection.flight('DLH400')?.alerts==='every',null,{timeout:5000});
    await page.click('.nav [data-action="saved"]');await page.waitForFunction(()=>/LH 400/.test(document.querySelector('#detail').textContent)&&/Changi/.test(document.querySelector('#detail').textContent));
+   assert.match(await page.textContent('#detail'),/Alerts: every flight/);
    await page.screenshot({path:`qa/${viewport.name}-saved.png`});
    const saved=await self();assert.equal(saved.saved,2);});
+  await step(viewport.name+': a trip with dated flights shows its route and only its planes',async()=>{
+   if(viewport.mobile)await page.click('.mobile-detail-toggle').catch(()=>{});
+   await page.click('.nav [data-action="trips"]');await page.click('#detail [data-action="new-trip"]');await page.fill('#trip-name','Newark');await page.click('#dialog button[type="submit"]');
+   await page.waitForFunction(()=>window.__aeris.state.tripView==='trip');
+   await page.click('#detail [data-action="add-trip-flight"]');await page.fill('#ff-flight','SQ 22');await page.waitForFunction(()=>/usually flies SIN → EWR/.test(document.querySelector('#ff-hint').textContent),null,{timeout:8000});
+   await page.click('#dialog button[type="submit"]');await page.waitForFunction(()=>window.__aeris.collection.data.trips[0]?.flights.length===1);
+   await page.waitForTimeout(1200);
+   const shown=await page.evaluate(()=>({plan:window.__aeris.map.planData.features.length,flights:[...new Set(window.__aeris.map.flightsData.features.map(f=>f.properties.cs))],text:document.querySelector('#detail').textContent}));
+   assert.equal(shown.plan,1);assert.deepEqual(shown.flights,['SIA22']);assert.match(shown.text,/SQ 22/);assert.match(shown.text,/SIN → EWR/);assert.match(shown.text,/In the air/);
+   await page.screenshot({path:`qa/${viewport.name}-trip.png`});
+   // Leaving Trips puts every plane back.
+   if(viewport.mobile)await page.click('#detail [data-action="toggle-detail"]');
+   await page.click('.nav [data-action="explore"]');await page.waitForFunction(()=>new Set(window.__aeris.map.flightsData.features.map(f=>f.properties.cs)).size>5);
+   assert.equal(await page.evaluate(()=>window.__aeris.map.planData.features.length),0);});
+  await step(viewport.name+': flight history: add a past flight, see the year in numbers',async()=>{
+   if(viewport.mobile)await page.click('#detail [data-action="toggle-detail"]').catch(()=>{});
+   await page.click('.nav [data-action="trips"]');await page.click('#detail [data-action="history"]');
+   await page.click('#detail [data-action="add-past-flight"]');await page.fill('#ff-flight','BA 15');
+   await page.waitForFunction(()=>/No route on record/.test(document.querySelector('#ff-hint').textContent),null,{timeout:8000});
+   await page.fill('#ff-date',new Date(Date.now()-40*86400e3).toISOString().slice(0,10));await page.fill('#ff-from','LHR');await page.fill('#ff-to','SIN');
+   await page.click('#dialog button[type="submit"]');await page.waitForFunction(()=>window.__aeris.collection.data.history.length===1);
+   const text=await page.textContent('#detail');assert.match(text,/BA 15/);assert.match(text,/LHR → SIN/);assert.match(text,/10,8\d\d km/);assert.match(text,/Added by you/);
+   assert.equal(await page.evaluate(()=>window.__aeris.map.planData.features.length),1);
+   await page.screenshot({path:`qa/${viewport.name}-history.png`});
+   if(viewport.mobile)await page.click('#detail [data-action="toggle-detail"]');
+   await page.click('.nav [data-action="explore"]');});
   await step(viewport.name+': map options and data sources',async()=>{
    if(viewport.mobile)await page.click('.mobile-detail-toggle');
    await page.click('[data-action="map-options"]');const dlg=await page.textContent('#dialog');assert.match(dlg,/Satellite/);assert.match(dlg,/Aircraft on the ground/);assert.match(dlg,/Globe/);

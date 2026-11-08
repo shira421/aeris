@@ -123,9 +123,23 @@ public final class MainActivity extends Activity {
                 FlightWatch.post(this, message.optString("title", "Aeris"), message.optString("body"), message.optString("id", "aeris"));
                 replyDevice(id, true, null);
                 break;
-            case "watch":
-                FlightWatch.setList(this, message.optJSONArray("items"));
+            case "watch": {
+                final org.json.JSONArray items = message.optJSONArray("items");
+                network.execute(() -> FlightWatch.setItems(getApplicationContext(), items));
                 replyDevice(id, true, null);
+                break;
+            }
+            case "watchState":
+                network.execute(() -> {
+                    final org.json.JSONArray items = FlightWatch.items(getApplicationContext());
+                    runOnUiThread(() -> replyDevice(id, items, null));
+                });
+                break;
+            case "runChecks":
+                network.execute(() -> {
+                    final JSONObject summary = FlightWatch.checkAll(getApplicationContext());
+                    runOnUiThread(() -> replyDevice(id, summary, null));
+                });
                 break;
             default:
                 replyDevice(id, null, "Unknown action");

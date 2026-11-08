@@ -90,10 +90,16 @@ export class WorldMap{
   for(const [name,path] of Object.entries(SHAPES))if(!m.hasImage('ac-'+name))m.addImage('ac-'+name,ICONS[name]||(ICONS[name]=silhouette(path)),{sdf:true,pixelRatio:2});
   const hasGlyphs=Boolean(m.getStyle().glyphs);
   const src=(id,data,extra={})=>{if(!m.getSource(id))m.addSource(id,{type:'geojson',data,...extra});};
-  src('route',this.routeData||empty());src('trail',this.trailData||empty(),{lineMetrics:true});src('airports',this.airportData||empty());src('flights',this.flightsData,{promoteId:'id'});src('selected',empty());src('me',this.meData||empty());
+  src('route',this.routeData||empty());src('trail',this.trailData||empty(),{lineMetrics:true});src('airports',this.airportData||empty());src('flights',this.flightsData,{promoteId:'id'});src('selected',empty());src('me',this.meData||empty());src('plan',this.planData||empty());src('plan-airports',this.planAirports||empty());
   const add=layer=>{if(!m.getLayer(layer.id))m.addLayer(layer);};
   add({id:'route-done',type:'line',source:'route',filter:['==',['get','part'],'done'],paint:{'line-color':'#d96f49','line-width':1.4,'line-opacity':.45}});
   add({id:'route-next',type:'line',source:'route',filter:['==',['get','part'],'next'],paint:{'line-color':'#d96f49','line-width':1.6,'line-dasharray':[2,2.5],'line-opacity':.8}});
+  // A trip's or the flight history's routes.
+  add({id:'plan-past',type:'line',source:'plan',filter:['==',['get','s'],'done'],layout:{'line-cap':'round'},paint:{'line-color':'#6f8f88','line-width':1.6,'line-opacity':.75}});
+  add({id:'plan-next',type:'line',source:'plan',filter:['==',['get','s'],'next'],layout:{'line-cap':'round'},paint:{'line-color':'#3d7779','line-width':1.8,'line-dasharray':[2,2]}});
+  add({id:'plan-live',type:'line',source:'plan',filter:['==',['get','s'],'live'],layout:{'line-cap':'round'},paint:{'line-color':'#d96f49','line-width':2.2}});
+  add({id:'plan-airport',type:'circle',source:'plan-airports',paint:{'circle-radius':4.5,'circle-color':'#ffffff','circle-stroke-color':'#204e51','circle-stroke-width':2}});
+  if(hasGlyphs)add({id:'plan-airport-label',type:'symbol',source:'plan-airports',layout:{'text-field':['get','code'],'text-font':FONT_BOLD,'text-size':11,'text-offset':[0,1.2],'text-anchor':'top','text-allow-overlap':true},paint:{'text-color':this.styleName==='satellite'||this.styleName==='dark'?'#ffffff':'#204e51','text-halo-color':this.styleName==='satellite'||this.styleName==='dark'?'#0b1d26':'#ffffff','text-halo-width':1.5}});
   add({id:'trail',type:'line',source:'trail',layout:{'line-cap':'round','line-join':'round'},paint:{'line-width':['interpolate',['linear'],['zoom'],3,1.5,10,3],'line-color':this.altitudeColors?['interpolate',['linear'],['get','a'],0,'#c39a2c',10000,'#56a061',20000,'#3a8e98',30000,'#3c6eb4',40000,'#7650ad']:'#d96f49','line-opacity':.95}});
   for(const [size,minzoom] of [['L',2.5],['M',6],['S',8]]){
    add({id:'airport-'+size,type:'circle',source:'airports',minzoom,filter:['==',['get','size'],size],paint:{'circle-radius':size==='L'?['interpolate',['linear'],['zoom'],3,2.5,10,6]:3.5,'circle-color':'#ffffff','circle-stroke-color':'#4f7f7b','circle-stroke-width':1.4}});
@@ -144,6 +150,24 @@ export class WorldMap{
   const at=current?[current.lat,current.lon]:null;
   this.routeData={type:'FeatureCollection',features:at?[line([origin.lat,origin.lon],at,'done'),line(at,[dest.lat,dest.lon],'next')]:[line([origin.lat,origin.lon],[dest.lat,dest.lon],'next')]};
   this.map.getSource('route')?.setData(this.routeData);
+ }
+ /** Routes of a trip or of the flight history: {lines:[{from,to,state:'done'|'next'|'live'}]}. Null clears. */
+ setPlan(plan){
+  const lines=(plan?.lines||[]).filter(l=>l.from&&l.to&&Number.isFinite(l.from.lat)&&Number.isFinite(l.to.lat));
+  const coords=l=>greatCircle([l.from.lat,l.from.lon],[l.to.lat,l.to.lon],64).map(([la,lo])=>[lo,la]);
+  this.planData={type:'FeatureCollection',features:lines.map(l=>({type:'Feature',properties:{s:l.state||'next'},geometry:{type:'LineString',coordinates:coords(l)}}))};
+  const seen=new Map();for(const l of lines)for(const p of [l.from,l.to])seen.set(p.code||p.name,p);
+  this.planAirports={type:'FeatureCollection',features:[...seen.values()].map(p=>({type:'Feature',properties:{code:p.code||''},geometry:{type:'Point',coordinates:[p.lon,p.lat]}}))};
+  this.map?.getSource('plan')?.setData(this.planData);this.map?.getSource('plan-airports')?.setData(this.planAirports);
+  return lines.length;
+ }
+ /** Frame the routes set with setPlan. */
+ fitPlan(padding=60){
+  if(!this.map||!this.planData?.features.length)return;
+  let w=Infinity,e=-Infinity,s=Infinity,n=-Infinity;
+  for(const f of this.planData.features)for(const [lo,la] of f.geometry.coordinates){w=Math.min(w,lo);e=Math.max(e,lo);s=Math.min(s,la);n=Math.max(n,la);}
+  if(e-w>300){this.map.flyTo({center:[0,20],zoom:1.2,duration:600});return;}
+  this.map.fitBounds([[w,s],[e,n]],{padding,maxZoom:7,duration:700});
  }
  /** Your own position, as a blue dot with its accuracy circle. */
  setMe(p){this.meData=p?{type:'FeatureCollection',features:[{type:'Feature',properties:{acc:Math.max(10,p.accuracy||50)},geometry:{type:'Point',coordinates:[p.lon,p.lat]}}]}:empty();this.map?.getSource('me')?.setData(this.meData);}

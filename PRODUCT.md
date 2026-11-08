@@ -8,10 +8,11 @@ The map opens on Singapore the first time (or on your position, if you allow it)
 
 ## Acceptance boundaries
 
-| Requirement | Current status (v0.4.0) | Still to do |
+| Requirement | Current status (v0.5.0) | Still to do |
 |---|---|---|
 | Search | Flight numbers (IATA or ICAO), airline names/codes/callsigns (1,043 airlines), registrations, hex, aircraft families and types, airports; worldwide lookups; airline and type lists | Scheduled (not yet departed) flights, historical records |
-| Saved and alerts | Flights, aircraft and airports; alerts for take-off, approach, landing and emergency codes; background checks in the iOS and Android apps | Push from a server for exact timing; departure-gate and delay data |
+| Saved and alerts | Flights, aircraft and airports; alerts once per flight (take-off, in the air, descending into the destination, landing, emergency codes) for the next flight or every flight; only observed facts; background checks in the iOS and Android apps | Push from a server for exact timing; departure-gate and delay data |
+| Trips and history | Trips of dated flights with their routes and only their planes on the map, alerts on the day; history logged from tracked flights or added by hand, with yearly numbers and a route map | Schedules for flights not yet departed; import from booking emails |
 | Rich telemetry | IAS/TAS/Mach, autopilot targets, QNH, wind, OAT, accuracy, MLAT/ADS-B when broadcast | — |
 | Aircraft and airport detail | ~100 types with published dimensions; registry data and photos; 6,045 airports with runways to scale and live traffic | Schedules, gates, NOTAMs, weather |
 | Accurate map | OpenStreetMap vector tiles at every zoom, satellite, globe, night | Self-hosted tiles for guaranteed availability |

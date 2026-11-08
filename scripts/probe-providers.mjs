@@ -1,7 +1,7 @@
 // Checks every data source Aeris can use: reachability, latency, CORS headers for the
 // GitHub Pages origin, payload shape and freshness. Run in CI (open internet); prints a table.
 const ORIGIN='https://shira421.github.io';
-const UA='Aeris/0.4 (+https://github.com/shira421/aeris; provider probe)';
+const UA='Aeris/0.5 (+https://github.com/shira421/aeris; provider probe)';
 const lat=1.36,lon=103.99;
 const probes=[
  ['adsb.lol point','https://api.adsb.lol/v2/point/'+lat+'/'+lon+'/250','readsb'],

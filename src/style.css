@@ -212,19 +212,95 @@ dialog::backdrop{background:#15343e59;backdrop-filter:blur(4px)}
 .scene-overlay{display:none;position:absolute;inset:0;z-index:6;pointer-events:none}
 .scene-mode .scene-overlay{display:block}
 .scene-mode .search-area,.scene-mode .map-tools{visibility:hidden}
-.scene-top{position:absolute;top:20px;left:20px;right:20px;display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.scene-top{position:absolute;top:20px;left:20px;right:18px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
 .scene-top>*{pointer-events:auto}
-.back-map{display:flex;align-items:center;gap:7px;min-height:42px;padding:9px 13px;border-radius:8px;font-size:14px;background:#ffffffed;box-shadow:0 2px 10px #34576615}
-.scene-tag{font-size:12px;text-align:right;color:#fff}
-.scene-tag span{display:block;margin-top:2px}
-.scene-tag strong{display:block;margin-bottom:4px;font-size:18px;font-weight:500}
-.scene-mode .scene-tag,.scene-mode .credits{color:#f2f7f6;text-shadow:0 1px 2px rgba(8,28,36,.75),0 0 14px rgba(8,28,36,.45)}
-.scene-actions{position:absolute;top:96px;right:18px;display:grid;gap:8px;pointer-events:auto}
-.scene-actions button{display:grid;place-items:center;width:42px;height:42px;border-radius:8px;background:#ffffffdc}
-.camera-bar{position:absolute;left:50%;bottom:calc(40px + var(--sab));transform:translateX(-50%);display:flex;gap:3px;padding:5px;border-radius:10px;white-space:nowrap;pointer-events:auto;background:#ffffffea;border:1px solid #ffffff80;box-shadow:0 3px 12px #21424d1a}
-.camera-bar button{display:flex;align-items:center;gap:6px;min-height:40px;padding:8px 13px;border-radius:7px;font-size:13px;color:#5b7477}
-.camera-bar button .icon{width:15px;height:15px}
+/* One card: back, then what is being followed. Same white, radius and shadow as the map tools. */
+.scene-card{display:flex;align-items:stretch;min-width:0;max-width:440px;border-radius:10px;overflow:hidden;background:#fffefa;border:1px solid #ffffffc4;box-shadow:0 3px 16px #153d4314}
+.scene-back{display:grid;place-items:center;width:46px;flex-shrink:0;color:#3d6d6c;border-right:1px solid #edf0eb}
+.scene-back:hover{background:#f3f6f2}
+.scene-tag{display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:0;padding:8px 14px}
+.scene-tag strong{font-size:15px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scene-tag span{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scene-tools{flex-shrink:0}
+.scene-mode .credits{color:#f2f7f6;text-shadow:0 1px 2px rgba(8,28,36,.75),0 0 14px rgba(8,28,36,.45)}
+/* Four equal cells, icon over label. */
+.camera-bar{position:absolute;left:50%;bottom:calc(40px + var(--sab));transform:translateX(-50%);display:grid;grid-template-columns:repeat(4,76px);gap:4px;padding:4px;border-radius:12px;pointer-events:auto;background:#fffefa;border:1px solid #ffffffc4;box-shadow:0 3px 16px #153d4320}
+.camera-bar button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;height:56px;border-radius:9px;font-size:12px;color:#5b7477}
+.camera-bar button .icon{width:20px;height:20px}
+.camera-bar button:hover{background:#f3f6f2}
 .camera-bar button.active{background:#2e5e63;color:#fff}
+
+/* 3D button in the flight details */
+.view-card{position:relative;display:flex;align-items:center;width:100%;height:76px;margin-bottom:18px;padding:0 14px;overflow:hidden;text-align:left;border-radius:10px;background:#e3ede8;border:1px solid #d4e1d8}
+.view-card:hover{background:#dbe8e1}
+.view-card:before{content:"";position:absolute;right:-30px;top:-70px;width:170px;height:170px;border-radius:50%;border:1px solid #c5d6ca}
+.view-card .preview-plane{position:absolute;right:44px;top:4px;width:132px;height:62px;transform:rotate(-10deg);filter:drop-shadow(5px 7px 4px #496a5a2e)}
+.view-label{position:relative;z-index:1;display:flex;flex-direction:column;gap:3px;max-width:52%}
+.view-label strong{font-size:14px;font-weight:600;color:var(--ink)}
+.view-label small{font-size:11px;line-height:1.35;color:#5d7d70}
+.view-arrow{position:absolute;right:12px;top:50%;margin-top:-14px;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;border:1px solid #99b5a8;color:#2f6362}
+.view-arrow .icon{width:15px;height:15px}
+
+/* Trips and history */
+.history-card{display:flex;align-items:center;gap:12px;width:100%;margin:6px 0 4px;padding:14px;text-align:left;border-radius:10px;background:#204e51;color:#fff}
+.history-card:hover{background:#1b4447}
+.history-icon{display:grid;place-items:center;width:40px;height:40px;flex-shrink:0;border-radius:10px;background:#ffffff1f;color:#edc89a}
+.history-text{flex:1;min-width:0}
+.history-text strong{display:block;font-size:15px;font-weight:600}
+.history-text small{display:block;margin-top:3px;font-size:12px;color:#cfe0dc}
+.history-card>.icon{width:16px;color:#cfe0dc}
+.section-head{display:flex;align-items:center;justify-content:space-between;margin:22px 0 8px;font-size:11px;letter-spacing:1px;color:var(--faint)}
+.small-button{display:inline-flex;align-items:center;gap:5px;min-height:34px;padding:0 10px;border-radius:8px;font-size:13px;letter-spacing:0;color:#2f6362;border:1px solid #d9e4de;background:#fff}
+.small-button .icon{width:15px;height:15px}
+.trip-list{display:grid;gap:8px}
+.trip-card{display:flex;align-items:center;gap:12px;width:100%;padding:13px 14px;text-align:left;border-radius:10px;border:1px solid var(--line);background:#fff}
+.trip-card:hover{background:var(--soft)}
+.trip-card-main{flex:1;min-width:0}
+.trip-card-main strong{display:block;font-size:15px;font-weight:600}
+.trip-card-main small{display:block;margin-top:3px;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trip-card-end{flex-shrink:0;max-width:34%;font-size:12px;text-align:right;color:#2f6650}
+.trip-card>.icon{width:15px;color:#9aaba6}
+.sub{margin:4px 0 14px;font-size:13px;color:var(--muted)}
+.trip-flights{margin-bottom:14px}
+.trip-flight{display:flex;align-items:center;gap:4px;border-bottom:1px solid var(--line)}
+.trip-flight-main{flex:1;display:flex;align-items:center;gap:12px;min-width:0;padding:12px 0;text-align:left}
+.date-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;width:44px;height:48px;flex-shrink:0;border-radius:9px;background:var(--soft);border:1px solid var(--line)}
+.date-tile b{font-size:17px;font-weight:600;line-height:1;color:var(--ink)}
+.date-tile small{margin-top:3px;font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
+.trip-flight-text{min-width:0}
+.trip-flight-text strong{display:block;font-size:14px;font-weight:600}
+.trip-flight-text .codes{margin-left:6px;font-weight:500;color:var(--muted)}
+.trip-flight-text small{display:block;margin-top:2px;font-size:12px;color:var(--muted)}
+.status-line{display:block;margin-top:4px;font-size:12px;color:var(--faint)}
+.status-line.live{color:#c2582f;font-weight:600}
+.status-line.done{color:#4e826c}
+.settings-group{margin-top:18px;border-top:1px solid var(--line)}
+.segmented{display:flex;gap:4px;margin:14px 0 16px;padding:3px;border-radius:10px;background:var(--soft);border:1px solid var(--line)}
+.segmented button{flex:1;min-height:34px;border-radius:7px;font-size:13px;color:var(--muted)}
+.segmented button.active{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 1px 3px #173e4314}
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);margin-bottom:14px;border-radius:10px;border:1px solid var(--line);background:#fff}
+.stat-grid div{display:flex;flex-direction:column;align-items:center;padding:12px 4px}
+.stat-grid div+div{border-left:1px solid var(--line)}
+.stat-grid b{font-size:19px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.stat-grid small{margin-top:2px;font-size:11px;color:var(--muted)}
+.detail-inner>.secondary.wide+.section-sub{margin-top:24px}
+.saved-main small.mode{color:#2f6650}
+
+/* Choices (alerts, trips) and forms */
+.choice-list{display:grid;gap:8px;margin:4px 0 14px}
+.choice{display:flex;align-items:center;gap:12px;width:100%;min-height:54px;padding:10px 14px;text-align:left;border-radius:10px;border:1px solid #dce6df;background:#fff;cursor:pointer}
+.choice b{display:block;font-size:14px;font-weight:600}
+.choice small{display:block;margin-top:2px;font-size:12px;color:var(--muted)}
+.choice input{accent-color:var(--teal);width:18px;height:18px;margin:0}
+.radio-mark{width:18px;height:18px;flex-shrink:0;border-radius:50%;border:2px solid #b7c8c2}
+.choice.active{border-color:#7fa595;background:#f1f7f3}
+.choice.active .radio-mark{border:5px solid var(--teal)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.form-row .form-field{margin-top:0}
+.form-hint{margin:0 0 4px;font-size:12px;line-height:1.5;color:var(--muted)}
+.secondary.danger{color:#a5432a;border-color:#ecc6b8}
+.secondary.danger .icon{width:16px;height:16px}
+dialog .modal-body>form>.form-field:first-child{margin-top:0}
 
 @media(max-width:1120px){
  :root{--pad-x:18px}
@@ -257,18 +333,17 @@ dialog::backdrop{background:#15343e59;backdrop-filter:blur(4px)}
  .credits{left:12px;right:10px;font-size:9px}
  .credits button{font-size:9px}
  .scene-top{left:12px;right:12px;top:12px}
- .scene-actions{top:76px;right:12px}
- .camera-bar{left:12px;right:12px;transform:none;justify-content:space-between;bottom:calc(92px + var(--sab))}
- .camera-bar button{padding:8px;gap:5px;font-size:12px}
+ .camera-bar{left:12px;right:12px;transform:none;grid-template-columns:repeat(4,1fr);bottom:calc(92px + var(--sab))}
  .scene-mode .mobile-detail-toggle{bottom:calc(34px + var(--sab))}
  .link-list{columns:1}
 }
 @media(max-width:400px){
  .nav{gap:13px}
  .nav button{font-size:13px}
+ .saved-count{display:none}
+ .pill-extra{display:none}
  .source-pill{font-size:9px;padding:6px 5px;letter-spacing:.2px;gap:4px}
  .source-buttons{grid-template-columns:1fr 1fr}
- .camera-bar button .icon{display:none}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 .panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:38px;margin-bottom:4px}

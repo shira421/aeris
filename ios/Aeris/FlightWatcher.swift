@@ -1,30 +1,20 @@
 import BackgroundTasks
 import Foundation
+import JavaScriptCore
 import UserNotifications
 
-/// Checks saved flights that have alerts on while Aeris is in the background, and posts
-/// take-off, landing and emergency notifications. iOS decides when background refresh runs
-/// (from about 15 minutes to several hours apart); while Aeris is open, the web app checks
-/// every minute itself and hands its latest state over here.
+/// Checks watched flights while Aeris is in the background. The alert rules are the web app's own
+/// (web/rules.js, run in JavaScriptCore), so a flight is described the same way open or closed, and
+/// each alert is sent once per flight whichever side notices first. iOS decides when background
+/// refresh runs, from about 15 minutes to several hours apart.
 final class FlightWatcher {
     static let shared = FlightWatcher()
     static let taskIdentifier = "com.shira421.aeris.refresh"
-    private static let storageKey = "aeris.watch"
-    private static let emergencies = ["7500": "unlawful interference", "7600": "radio failure", "7700": "general emergency"]
+    private static let storageKey = "aeris.watch.v2"
 
-    struct Item: Codable {
-        var callsign: String
-        var label: String
-        var state: String?   // airborne | ground | unseen
-        var squawk: String?
-        var altitude: Double?
-    }
-
-    private enum Lookup {
-        case failed
-        case notFound
-        case found(airborne: Bool, altitude: Double?, squawk: String?)
-    }
+    /// All item state lives on this queue.
+    private let queue = DispatchQueue(label: "com.shira421.aeris.flight-watcher")
+    private var rules: JSContext?
 
     private let session: URLSession = {
         let config = URLSessionConfiguration.ephemeral
@@ -37,35 +27,49 @@ final class FlightWatcher {
         return URLSession(configuration: config)
     }()
 
-    // MARK: Watch list
-
-    private func load() -> [Item] {
-        guard let data = UserDefaults.standard.data(forKey: Self.storageKey) else { return [] }
-        return (try? JSONDecoder().decode([Item].self, from: data)) ?? []
+    final class Cancel {
+        private let lock = NSLock()
+        private var cancelled = false
+        var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
+        func cancel() { lock.lock(); cancelled = true; lock.unlock() }
     }
 
-    private func save(_ items: [Item]) {
-        if let data = try? JSONEncoder().encode(items) { UserDefaults.standard.set(data, forKey: Self.storageKey) }
+    // MARK: Items: [{callsign, label, notify, route, state}], the same shape the web app sends
+
+    private func load() -> [[String: Any]] {
+        guard let data = UserDefaults.standard.data(forKey: Self.storageKey),
+              let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
+        return items
     }
 
-    /// Called by the web app with the flights that have alerts on and their last known state.
-    func setWatchList(_ raw: [[String: Any]]) {
-        let previous = Dictionary(load().map { ($0.callsign, $0) }, uniquingKeysWith: { first, _ in first })
-        let items: [Item] = raw.compactMap { entry in
-            guard let callsign = entry["callsign"] as? String, !callsign.isEmpty else { return nil }
-            let old = previous[callsign]
-            return Item(callsign: callsign,
-                        label: entry["label"] as? String ?? callsign,
-                        state: entry["state"] as? String ?? old?.state,
-                        squawk: entry["squawk"] as? String ?? old?.squawk,
-                        altitude: old?.altitude)
+    private func save(_ items: [[String: Any]]) {
+        guard JSONSerialization.isValidJSONObject(items),
+              let data = try? JSONSerialization.data(withJSONObject: items) else { return }
+        UserDefaults.standard.set(data, forKey: Self.storageKey)
+    }
+
+    private static func checkedAt(_ item: [String: Any]) -> Double {
+        ((item["state"] as? [String: Any])?["t"] as? NSNumber)?.doubleValue ?? 0
+    }
+
+    /// From the web app. Where a background check saw a flight more recently, its state is kept.
+    func setItems(_ incoming: [[String: Any]]) {
+        queue.async {
+            var known: [String: [String: Any]] = [:]
+            for item in self.load() { if let callsign = item["callsign"] as? String { known[callsign] = item } }
+            let merged: [[String: Any]] = incoming.compactMap { item in
+                guard let callsign = item["callsign"] as? String else { return nil }
+                var out = item
+                if let old = known[callsign], Self.checkedAt(old) > Self.checkedAt(item) { out["state"] = old["state"] }
+                return out
+            }
+            self.save(merged)
         }
-        save(items)
-        if items.isEmpty {
-            BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.taskIdentifier)
-        } else {
-            schedule()
-        }
+    }
+
+    /// For the web app when it opens: what the background checks saw.
+    func items(_ done: @escaping ([[String: Any]]) -> Void) {
+        queue.async { done(self.load()) }
     }
 
     // MARK: Background refresh
@@ -77,80 +81,99 @@ final class FlightWatcher {
         }
     }
 
+    /// Ask iOS for the next background check (when there is anything to watch).
     func schedule() {
-        guard !load().isEmpty else { return }
-        let request = BGAppRefreshTaskRequest(identifier: Self.taskIdentifier)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
-        do {
-            try BGTaskScheduler.shared.submit(request)
-        } catch {
-            print("AERIS_EVENT background refresh not scheduled: \(error.localizedDescription)")
+        queue.async {
+            if self.load().isEmpty {
+                BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.taskIdentifier)
+                return
+            }
+            let request = BGAppRefreshTaskRequest(identifier: Self.taskIdentifier)
+            request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
+            do {
+                try BGTaskScheduler.shared.submit(request)
+            } catch {
+                print("AERIS_EVENT background refresh not scheduled: \(error.localizedDescription)")
+            }
         }
     }
 
     private func handle(_ task: BGAppRefreshTask) {
         schedule()
-        let work = Task {
-            await self.checkAll()
-            task.setTaskCompleted(success: !Task.isCancelled)
+        let cancel = Cancel()
+        task.expirationHandler = { cancel.cancel() }
+        queue.async {
+            _ = self.checkAll(cancel)
+            task.setTaskCompleted(success: !cancel.isCancelled)
         }
-        task.expirationHandler = { work.cancel() }
     }
 
-    func checkAll() async {
+    /// One check of every item, now (the simulator test uses this).
+    func runNow(_ done: @escaping ([String: Any]) -> Void) {
+        queue.async { done(self.checkAll(Cancel())) }
+    }
+
+    // MARK: Checking
+
+    private func loadRules() -> JSContext? {
+        if let rules = rules { return rules }
+        guard let web = Bundle.main.url(forResource: "web", withExtension: nil),
+              let source = try? String(contentsOf: web.appendingPathComponent("rules.js"), encoding: .utf8),
+              let context = JSContext() else { return nil }
+        context.exceptionHandler = { _, exception in
+            print("AERIS_EVENT rules error: \(exception?.toString() ?? "unknown")")
+        }
+        context.evaluateScript(source)
+        guard let api = context.objectForKeyedSubscript("AerisRules"), !api.isUndefined else { return nil }
+        if let airports = try? String(contentsOf: web.appendingPathComponent("airports.json"), encoding: .utf8) {
+            _ = api.invokeMethod("init", withArguments: [airports])
+        }
+        rules = context
+        return context
+    }
+
+    /// Runs on `queue`. Returns a short summary.
+    private func checkAll(_ cancel: Cancel) -> [String: Any] {
+        guard let api = loadRules()?.objectForKeyedSubscript("AerisRules") else { return ["rules": false] }
         var items = load()
+        var checked = 0, alerts = 0
         for index in items.indices {
-            if Task.isCancelled { break }
-            let item = items[index]
-            switch await lookup(item.callsign) {
-            case .failed:
-                continue
-            case .notFound:
-                if item.state == "airborne", let altitude = item.altitude, altitude < 3000 {
-                    notify(item, "has probably landed",
-                           "Last seen at \(Int(altitude)) ft. Coverage close to the ground is limited.", kind: "probably-landed")
-                }
-                items[index].state = "unseen"
-            case let .found(airborne, altitude, squawk):
-                let now = airborne ? "airborne" : "ground"
-                if item.state == "ground" && airborne {
-                    notify(item, "took off", "Now airborne.", kind: "takeoff")
-                } else if item.state == "unseen" && airborne {
-                    notify(item, "is in the air", altitude.map { "At \(Int($0)) ft." } ?? "Now airborne.", kind: "airborne")
-                } else if item.state == "airborne" && !airborne {
-                    notify(item, "has landed", "On the ground.", kind: "landed")
-                }
-                if let squawk = squawk, let meaning = Self.emergencies[squawk], item.squawk != squawk {
-                    notify(item, "is squawking \(squawk)", "Transponder code \(squawk) means \(meaning).", kind: "emergency")
-                }
-                items[index].state = now
-                items[index].squawk = squawk
-                items[index].altitude = altitude
+            if cancel.isCancelled { break }
+            guard let callsign = items[index]["callsign"] as? String,
+                  JSONSerialization.isValidJSONObject(items[index]),
+                  let itemData = try? JSONSerialization.data(withJSONObject: items[index]),
+                  let itemText = String(data: itemData, encoding: .utf8) else { continue }
+            guard let response = fetch(callsign) else { continue } // network trouble: try again next time
+            let now = Date().timeIntervalSince1970
+            guard let resultText = api.invokeMethod("check", withArguments: [itemText, response, now])?.toString(),
+                  let resultData = resultText.data(using: .utf8),
+                  let result = try? JSONSerialization.jsonObject(with: resultData) as? [String: Any],
+                  let item = result["item"] as? [String: Any] else { continue }
+            items[index] = item
+            checked += 1
+            for alert in (result["alerts"] as? [[String: Any]]) ?? [] {
+                guard let title = alert["title"] as? String else { continue }
+                Self.post(title: title, body: alert["body"] as? String ?? "", id: alert["tag"] as? String ?? UUID().uuidString) { _ in }
+                alerts += 1
             }
-            try? await Task.sleep(nanoseconds: 1_200_000_000) // stay under the provider's rate limit
+            if index < items.count - 1 { Thread.sleep(forTimeInterval: 1.2) } // stay under the provider's rate limit
         }
         save(items)
+        return ["rules": true, "items": items.count, "checked": checked, "alerts": alerts]
     }
 
-    private func lookup(_ callsign: String) async -> Lookup {
+    /// adsb.lol's answer for a callsign (an empty list when it is not in the air), or nil on failure.
+    private func fetch(_ callsign: String) -> String? {
         guard let encoded = callsign.addingPercentEncoding(withAllowedCharacters: .alphanumerics),
-              let url = URL(string: "https://api.adsb.lol/v2/callsign/\(encoded)") else { return .failed }
-        do {
-            let (data, response) = try await session.data(from: url)
-            guard (response as? HTTPURLResponse)?.statusCode == 200,
-                  let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { return .failed }
-            let aircraft = (json["ac"] as? [[String: Any]]) ?? []
-            guard let match = aircraft.first(where: { $0["lat"] is NSNumber }) else { return .notFound }
-            let onGround = (match["alt_baro"] as? String) == "ground"
-            let altitude = (match["alt_baro"] as? NSNumber)?.doubleValue ?? (match["alt_geom"] as? NSNumber)?.doubleValue
-            return .found(airborne: !onGround, altitude: onGround ? 0 : altitude, squawk: match["squawk"] as? String)
-        } catch {
-            return .failed
-        }
-    }
-
-    private func notify(_ item: Item, _ title: String, _ body: String, kind: String) {
-        Self.post(title: "\(item.label) \(title)", body: body, id: "\(item.callsign)-\(kind)") { _ in }
+              let url = URL(string: "https://api.adsb.lol/v2/callsign/\(encoded)") else { return nil }
+        let done = DispatchSemaphore(value: 0)
+        var text: String?
+        session.dataTask(with: url) { data, response, _ in
+            if (response as? HTTPURLResponse)?.statusCode == 200, let data = data { text = String(data: data, encoding: .utf8) }
+            done.signal()
+        }.resume()
+        _ = done.wait(timeout: .now() + 16)
+        return text
     }
 
     static func post(title: String, body: String, id: String, completion: @escaping (Error?) -> Void) {
