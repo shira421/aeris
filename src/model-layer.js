@@ -6,14 +6,16 @@ import {DEG} from './core.ts';
 export class ModelLayer{
  constructor(){this.id='aircraft-model';this.type='custom';this.renderingMode='3d';this.visible=false;this.mesh=null;this.key=null;this.pose=null;}
  onAdd(map,gl){
-  this.map=map;this.camera=new T.Camera();this.scene=new T.Scene();
-  this.scene.add(new T.HemisphereLight(0xe6f2ff,0x7d8c7d,2.2));
-  const sun=new T.DirectionalLight(0xfff3e0,2.6);sun.position.set(-.4,1,.3);this.scene.add(sun);
-  this.renderer=new T.WebGLRenderer({canvas:map.getCanvas(),context:gl,antialias:true});this.renderer.autoClear=false;
-  this.renderer.outputColorSpace=T.SRGBColorSpace;
+  this.map=map;
+  // MapLibre removes and re-adds custom layers on every style change (for example when the 3D
+  // view switches to satellite). Keep the scene, model and renderer so nothing is lost.
+  if(!this.scene){this.camera=new T.Camera();this.scene=new T.Scene();
+   this.scene.add(new T.HemisphereLight(0xe6f2ff,0x7d8c7d,2.2));
+   const sun=new T.DirectionalLight(0xfff3e0,2.6);sun.position.set(-.4,1,.3);this.scene.add(sun);}
+  if(!this.renderer||this.gl!==gl){this.gl=gl;this.renderer=new T.WebGLRenderer({canvas:map.getCanvas(),context:gl,antialias:true});this.renderer.autoClear=false;this.renderer.outputColorSpace=T.SRGBColorSpace;}
   if(this.pending){const p=this.pending;this.pending=null;this.setFlight(...p);}
  }
- onRemove(){this.dispose();this.renderer=null;}
+ onRemove(){}
  dispose(){if(!this.mesh)return;this.scene?.remove(this.mesh);this.mesh.traverse(o=>{o.geometry?.dispose();for(const m of [].concat(o.material||[]))m.dispose();});this.mesh=null;this.key=null;}
  setFlight(f,typeCode){
   if(!f){this.dispose();this.pose=null;return;}

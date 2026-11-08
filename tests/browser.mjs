@@ -60,6 +60,10 @@ try{
    if(viewport.mobile)await page.evaluate(()=>document.querySelector('.workspace').classList.add('detail-open'));
    await page.click('[data-action="3d"]');await page.waitForFunction(()=>window.__aerisSelfTest().view3d,null,{timeout:30000});await page.waitForTimeout(2500);
    const drawn=await page.evaluate(()=>{const m=window.__aeris.map;return {visible:m.model.visible,mesh:Boolean(m.model.mesh),pose:m.model.pose,alt:m.lastAltitude};});assert.ok(drawn.mesh&&drawn.visible,'3D model present');assert.ok(Number.isFinite(drawn.alt.metres),'altitude estimate');
+   // A map style change (satellite ↔ map) must keep the 3D model.
+   await page.click('[data-action="scene-style"]');await page.waitForTimeout(2500);
+   const kept=await page.evaluate(()=>{const m=window.__aeris.map;return {mesh:Boolean(m.model.mesh),renderer:Boolean(m.model.renderer),layer:Boolean(m.map.getLayer('aircraft-model'))};});
+   assert.deepEqual(kept,{mesh:true,renderer:true,layer:true},'model survives a style change');
    await page.screenshot({path:`qa/${viewport.name}-3d-follow.png`});
    for(const cam of ['orbit','cockpit','model']){await page.click(`[data-camera="${cam}"]`);await page.waitForTimeout(1500);await page.screenshot({path:`qa/${viewport.name}-3d-${cam}.png`});}
    assert.ok(await page.evaluate(()=>window.__aeris.state.studio),'model studio open');

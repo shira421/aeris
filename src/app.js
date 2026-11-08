@@ -44,7 +44,7 @@ const canLive=()=>Boolean(bridge()||getProxy());
 const state={nav:'explore',tab:'overview',selected:null,airport:null,mode:canLive()?'live':'demo',view3d:false,studio:false,camera:'chase',demoTime:410,playing:false,rate:1,
  flights:demoFlights(410),saved:loadPref('saved',[]),savedMeta:loadPref('savedMeta',{}),units:loadPref('units','aviation'),filter:{min:0,max:60000,type:'all',ground:true},
  replayTime:null,quality:loadPref('quality','high'),mapStyle:loadPref('mapStyle','map'),projection:loadPref('projection','globe'),error:'',info:{},center:{lat:1.36,lng:103.99},zoom:6.6};
-let studio=null,lastUI=0,lastMapPush=0,lastFrame=0,lastTrail=0,lastSlow=0,toastTimer,dialogFocus,infoFor=null;
+let emptyHadAircraft=false,studio=null,lastUI=0,lastMapPush=0,lastFrame=0,lastTrail=0,lastSlow=0,toastTimer,dialogFocus,infoFor=null;
 
 $('#app').innerHTML=`
 <header class="topbar"><button class="brand" data-action="explore" aria-label="Aeris home"><svg viewBox="0 0 32 36" aria-hidden="true"><path d="M2 27 16 3l14 24-14-7Z" fill="#204e51"/><path d="m6 30 10-6 10 6-10 5Z" fill="#d87852"/></svg><span>AERIS<span class="brand-sub">A CLOSER LOOK AT FLIGHT</span></span></button><nav class="nav" aria-label="Main navigation"><button data-action="explore" class="active">Explore</button><button data-action="saved">Saved<span class="saved-count"></span></button><button data-action="airports">Airports</button></nav><div class="top-actions"><button id="source-pill" class="source-pill" data-action="connect" title="Flight data sources"><span class="dot"></span><span id="source-text">CONNECTING</span></button><time class="clock" id="clock"></time><button class="iconbutton" data-action="settings" aria-label="Settings" title="Settings">${icon('settings')}</button></div></header>
@@ -309,7 +309,7 @@ function animate(t){
     if(state.view3d){const alt=map.lastAltitude;$('#scene-source').textContent=f.simulated?'SIMULATED FLIGHT':state.replayTime!==null?'SESSION REPLAY':quality(f).status.toUpperCase()+' · '+f.source;if(alt?.metres!=null)$('#scene-fidelity').textContent=`${fmt(alt.metres/FT,'alt')} ${unit('alt')} above sea level · ${alt.basis}`;}}
    else if(state.selected&&state.mode==='live'&&!live.get(state.selected)){toast('The selected aircraft left coverage.');deselect();}
   }
-  if(t-lastSlow>2000){lastSlow=t;if(f){updateRoute();if(state.nav==='explore'&&state.tab==='overview'&&$('#altitude-chart'))$('#altitude-chart').innerHTML=chart(f);}if(state.nav==='airports'&&state.airport)renderAirports();}
+  if(t-lastSlow>2000){lastSlow=t;if(!f&&state.nav==='explore'){const has=visibleFlights().length>0;if(has!==emptyHadAircraft){emptyHadAircraft=has;renderDetail();}}if(f){updateRoute();if(state.nav==='explore'&&state.tab==='overview'&&$('#altitude-chart'))$('#altitude-chart').innerHTML=chart(f);}if(state.nav==='airports'&&state.airport)renderAirports();}
  }
  requestAnimationFrame(animate);
 }

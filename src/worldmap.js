@@ -77,6 +77,9 @@ export class WorldMap{
  setStyle(name){
   if(!this.map)return;this.styleName=name;
   const style=name==='offline'?offlineStyle(false):(STYLES[name]||STYLES.map)();
+  // Terrain belongs to the map, not the style: detach it while the new style loads, or MapLibre
+  // renders terrain depth against a style that has no projection yet. install() re-attaches it.
+  if(this.mode!=='map')try{this.map.setTerrain(null);}catch{}
   this.map.setStyle(style,{diff:false});
  }
  setProjection(p){this.projection=p;if(this.map&&this.styleLoaded())try{this.map.setProjection({type:p});}catch{}}
