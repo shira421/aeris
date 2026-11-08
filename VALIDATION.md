@@ -1,11 +1,12 @@
-# Validation record — v0.4.0, 8 November 2026
+# Validation record — v0.5.0, 8 November 2026
 
 | Check | Result | How |
 |---|---|---|
-| Unit tests | 30 pass | `npm test`: the 21 earlier tests (parsing, merging, dead reckoning, coverage circles, routes, geoid, types, live-engine scheduling, airports, demo) plus search parsing ("lufthansa" → DLH, "SQ 22"/"SQ022" → SIA22, "6E 2341" → IGO2341, registrations, hex, A380/787/737 families), alert rules (take-off, approach once, landing, emergency squawk once, probably landed, silent first look), the saved collection and migration from the old saved list, the watcher (silent baseline, quiet after resume), and worldwide lookups trying a rate-limited source last |
+| Unit tests | 42 pass | `npm test`: earlier tests plus the alert rules over whole flights (each alert once per leg; coverage gaps, a flickering ground flag and repeated emergency codes do not repeat alerts; nothing said about a flight that is not received; ground flag believed only near an airport at taxi speed; a route that does not fit is not used), alert wording, Off/Next/Every modes, trips and which flights are watched, history logging after landing (once), the watcher across many checks and merging the phone app's newer state, and the iOS background bundle (`dist/rules.js`) giving the same results |
+| Android rules | Pass | `npm run test:android-rules`: `Rules.java` compiled with stand-ins for org.json and run on the same flights as the web rules; identical alerts, wording and tags |
 | Server and proxy | Pass | Static files, airports file, path traversal, methods, and rejection of non-allowlisted, non-HTTPS and credentialed proxy targets |
 | Browser, desktop and iPhone sizes | Pass (locally and on GitHub's Ubuntu runner) | Headless Chrome with software WebGL, feeds mocked: first-open location question and blue dot, live mode via proxy, aircraft drawn, tap selection with flight number and airline, route and time to go, airframe and telemetry tabs, 3D follow/orbit/cockpit/model, airport search, saving an airport, "singapore" listing the airline and its flights, "A350" listing the type in the air, "LH 400" found worldwide (an aircraft far outside the view), opened, saved and alerts turned on, Saved list, map options and data sources, no page errors |
-| iOS app in the Simulator | Pass | App launches, live data through the native bridge (adsb.lol and adsb.fi, 140–290 ms), **location from the simulator reaches the page through the new device bridge** (blue dot, map starts there), no script errors |
+| iOS app in the Simulator | Pass | App launches, live data through the native bridge, location reaches the page. Self-test: asks for notification permission (the prompt appears; CI cannot tap Allow), adds a live flight to a trip, syncs it to the app, runs a background check with the rules in JavaScriptCore (1 flight checked), posts an alert; **the app keeps running throughout** |
 | Real services from CI | Pass | `npm run test:live`: first aircraft in 0.5 s around Singapore, median age of on-screen positions 1.0–1.7 s; 131–153 aircraft drawn around London, 1.1–1.4 s; route checked (WJA2 YYC→LHR); 3D with geoid-corrected height; **worldwide search from London for an A380 over Australia (UAE75T → "EK 75T") answered in 0.87 s and the map went there**; "lufthansa" listed 90–94 Lufthansa flights from OpenSky's worldwide list; no page errors |
 | iOS device build | Pass | Unsigned `Release-iphoneos` build packaged as IPA with background app refresh and notification code; signed export runs only when secrets exist |
 | Android build | Pass | Debug APK with the network and device bridges and the background check job (not run on a device) |
@@ -13,6 +14,9 @@
 | Rate limits | Adjusted | adsb.lol answered 429 after 45–70 s from GitHub's shared runner addresses even at 1.6 s spacing; Aeris backs off that source and adsb.fi carries the refresh. Behaviour from home or mobile addresses is not yet measured |
 
 ## Fixed during validation
+
+v0.5.0:
+- The background check skipped flights when adsb.lol rate-limited the request; it now asks adsb.fi next.
 
 v0.4.0:
 - The live smoke test measured the age of every aircraft held in memory, including ones that had left the view a few seconds earlier and are no longer refreshed; it now measures the aircraft on screen.
@@ -32,7 +36,7 @@ v0.3.0:
 ## Not yet verified
 
 - Physical iPhone/Android devices: battery, thermal behaviour, memory on older phones, long sessions.
-- Notifications and background checks on a device. The simulator cannot grant notification permission from CI, and iOS/Android decide when background checks run (15 minutes to hours apart). The alert rules themselves are unit-tested.
+- Notifications and background checks on a device. The simulator cannot grant notification permission from CI, and iOS/Android decide when background checks run (15 minutes to hours apart). The alert rules themselves are unit-tested, and the crash reported on turning alerts on in v0.4.0 could not be reproduced in the simulator.
 - The Android location and notification permission prompts (built, not run).
 - Sideload install of the IPA through SideStore/AltStore (the build is standard; signing is done by those tools).
 - The Cloudflare Worker proxy (code is included; it deploys only when Cloudflare secrets are set).
