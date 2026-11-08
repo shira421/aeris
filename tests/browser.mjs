@@ -71,6 +71,15 @@ try{
     const label=button.querySelector('.view-label');
     return {fits:text.left>=b.left&&text.right<=plane.left&&text.bottom<=b.bottom&&plane.right<=arrow.left&&arrow.right<=b.right,overflow:label.scrollWidth>label.clientWidth};
    });assert.ok(layout.fits);assert.equal(layout.overflow,false);
+   const controls=await page.evaluate(()=>{
+    const detail=document.querySelector('#detail').getBoundingClientRect();
+    const actions=[...document.querySelectorAll('.action-row button')].every(button=>{const r=button.getBoundingClientRect();return r.left>=detail.left&&r.right<=detail.right&&button.scrollWidth<=button.clientWidth;});
+    const label=document.querySelector('#source-text'),before=label.innerHTML;
+    const header=['LIVE','CONNECTING','RECONNECTING'].every(status=>{
+     label.textContent=status;const brand=document.querySelector('.brand').getBoundingClientRect(),nav=document.querySelector('.nav').getBoundingClientRect(),pill=document.querySelector('#source-pill').getBoundingClientRect();
+     return brand.right<=nav.left&&nav.right<=pill.left&&pill.right<=innerWidth;
+    });label.innerHTML=before;return {actions,header};
+   });assert.deepEqual(controls,{actions:true,header:true},'phone controls remain visible and do not overlap');
    await page.screenshot({path:`qa/${viewport.name}-3d-button.png`});
    if(viewport.mobile)await page.setViewportSize({width:viewport.width,height:viewport.height});
   });
