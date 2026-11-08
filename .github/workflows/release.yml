@@ -72,6 +72,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
+      - name: Android background alert rules match the web app's
+        run: node tests/android-rules.mjs
       - name: Build Android APK
         working-directory: android
         run: gradle :app:assembleDebug
@@ -139,6 +141,8 @@ jobs:
           for i in $(seq 1 30); do xcrun simctl get_app_container "$DEVICE" com.shira421.aeris >/dev/null 2>&1 && break; sleep 1; done
           # Location for the blue dot: allow it and place the simulator in Singapore.
           xcrun simctl privacy "$DEVICE" grant location com.shira421.aeris || true
+          # Allow notifications too, so the self-test can turn alerts on the way a person does.
+          (brew tap wix/brew >/dev/null 2>&1 && brew install applesimutils >/dev/null 2>&1 && applesimutils --byId "$DEVICE" --bundle com.shira421.aeris --setPermissions notifications=YES) || echo "::warning::Could not pre-allow notifications in the simulator
           xcrun simctl location "$DEVICE" set 1.3521,103.8198 || true
           # The Home Screen registers a new install in the background. A launch sent before that
           # finishes can be dropped: the app never comes to the front (seen on main, 8 Nov).
@@ -159,7 +163,7 @@ jobs:
           sips -Z 500 ../ios-early.png --out ../ios-early-s.png >/dev/null && sips -s format jpeg -s formatOptions 45 ../ios-early-s.png --out ../ios-early.jpg >/dev/null && echo "QA_SHOT ios-15s $(base64 -i ../ios-early.jpg | tr -d '\n')" || true
           sleep 60
           xcrun simctl io "$DEVICE" screenshot ../ios-simulator.png || true
-          echo "--- running processes"; xcrun simctl spawn "$DEVICE" launchctl list | grep -i aeris || echo "Aeris is not running"
+          echo "--- running processes"; RUNNING=1; xcrun simctl spawn "$DEVICE" launchctl list | grep -i aeris || { echo "Aeris is not running"; RUNNING=0; }
           echo "--- crash reports"; find ~/Library/Logs/DiagnosticReports -newermt "@$START" -iname '*Aeris*' -print -exec head -c 6000 {} \; 2>/dev/null || true
           echo "--- system log"; xcrun simctl spawn "$DEVICE" log show --start "$(date -r $START '+%Y-%m-%d %H:%M:%S')" --style compact --predicate 'process == "Aeris" OR (process CONTAINS "WebContent" AND messageType >= 16) OR eventMessage CONTAINS[c] "aeris"' 2>/dev/null | grep -v '^Timestamp' | tail -120 || true
           xcrun simctl terminate "$DEVICE" com.shira421.aeris || true
@@ -168,6 +172,11 @@ jobs:
           grep -q 'AERIS_SELFTEST.*"loaded":true.*"map":true' ../selftest.log
           grep -q 'AERIS_SELFTEST.*"device":true' ../selftest.log
           grep -q 'AERIS_SELFTEST.*"me":true' ../selftest.log && echo "Location reached the page through the device bridge" || echo "::warning::The simulator location did not reach the page"
+          # Turning alerts on, the background check (rules in JavaScriptCore) and posting an alert, without the app stopping.
+          [ "$RUNNING" = 1 ] || { echo "::error::The app stopped during the self-test"; exit 1; }
+          grep 'AERIS_SELFTEST t=70' ../selftest.log | grep -o '"deviceTest":.*' | head -c 1500; echo
+          grep -q 'AERIS_SELFTEST t=70.*"step":"done"' ../selftest.log
+          grep -q 'AERIS_SELFTEST t=70.*"background":{[^}]*"rules":true' ../selftest.log
 
       - name: Signed iPhone app (only when Apple signing secrets are configured)
         if: env.IOS_CERTIFICATE_P12 != '' && env.IOS_PROVISIONING_PROFILE != ''

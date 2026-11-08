@@ -2,14 +2,14 @@ import {WorldMap} from './worldmap.js';
 import {Studio} from './studio.js';
 import {LiveFeed} from './live.js';
 import {PROVIDERS} from './providers.js';
-import {bridge,setProxy,getProxy} from './net.js';
+import {bridge,setProxy,getProxy,nativeCall} from './net.js';
 import {loadAirports,airportByCode,searchAirports,nearestAirports,airportsGeoJSON,localTime} from './airports.js';
 import {routeFor,aircraftFor,photoFor} from './enrich.js';
 import {typeFor,iconClass} from './types.js';
 import {altitudeMSL} from './geo.js';
 import {demoFlights,scenarioTrack,DEMO_DURATION} from './data.js';
 import {searchAirlines,searchTypes,directLookups,matchesFlight,airlineFor,flightNumber} from './search.js';
-import {Collection,Watcher} from './collection.js';
+import {Collection,Watcher,place,localDate,daysBetween} from './collection.js';
 import {currentLocation,notificationPermission,notify,syncWatchList,backgroundChecks} from './device.js';
 import {quality,escapeHTML as e,FT,KT,distance,routeFit,LIMITS,parseEndpoint} from './core.ts';
 
@@ -24,8 +24,12 @@ const icons={
  eye:'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12m13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0',cube:'m12 2 9 5v10l-9 5-9-5V7Zm0 10 9-5m-9 5v10m0-10L3 7',
  signal:'M5 16v4m5-9v9m5-14v14m5-19v19',altitude:'m4 18 8-12 8 12M8 12l4 3 4-3M3 21h18',speed:'M4 18a9 9 0 1 1 16 0M12 14l6-6m-8 8a2 2 0 1 1 4 0 2 2 0 0 1-4 0',
  vertical:'M12 3v18m-5-5 5 5 5-5M7 8l5-5 5 5',heading:'m12 3 8 18-8-5-8 5Z',download:'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',
- satellite:'m6 6 4 4m4 4 4 4M3 9l6-6 3 3-6 6Zm9 9 6-6 3 3-6 6Zm-3-3 6-6',airline:'M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18'
+ satellite:'m6 6 4 4m4 4 4 4M3 9l6-6 3 3-6 6Zm9 9 6-6 3 3-6 6Zm-3-3 6-6',airline:'M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18',
+ trip:'M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M4 7h16v12H4ZM4 12h16',globe:'M21 12A9 9 0 1 1 3 12a9 9 0 0 1 18 0M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18',
+ edit:'M4 20h4L19 9l-4-4L4 16Zm9-13 4 4',trash:'M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13'
 };
+// The aircraft drawn on the 3D button.
+const planeSVG=`<svg class="preview-plane" viewBox="0 0 300 140" aria-hidden="true"><defs><linearGradient id="fuselage" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset=".4" stop-color="#f7f8f4"/><stop offset="1" stop-color="#8faaa3"/></linearGradient></defs><path d="m105 70 88-52 16 3-54 54 79 42-18 5-93-37Z" fill="#bbcfc5" stroke="#829f94" stroke-width="1"/><path d="m219 76 37-38 11 2-15 39 22 22-14 1-31-16Z" fill="#2c5860"/><path d="M30 74C42 62 62 61 85 62l156 9c21 1 28 7 17 11l-182 6C49 87 25 81 30 74Z" fill="url(#fuselage)" stroke="#96b1a4"/><path d="m91 75 65 49 20 1-29-47Z" fill="#e2ebe3" stroke="#8ea99d"/><path d="m123 90 21 5 7 8-4 7-26-9Z" fill="#f7f8f4" stroke="#829d92"/><ellipse cx="124" cy="96" rx="3" ry="7" fill="#1c4c58" transform="rotate(-38 124 96)"/><path d="m39 69 8-3 13 1-4 5-11 1Z" fill="#345b62"/><path d="m68 71 133 6" stroke="#77928c" stroke-width="2" stroke-dasharray="2 4"/><path d="m35 80 201 1" stroke="#cda36a" stroke-width="1.5"/></svg>`;
 const icon=(name,cls='')=>`<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${icons[name]||icons.info}"/></svg>`;
 const $=s=>document.querySelector(s);
 function loadPref(k,fallback){try{return JSON.parse(localStorage.getItem('aeris-'+k))??fallback;}catch{return fallback;}}
@@ -42,17 +46,17 @@ const canLive=()=>Boolean(bridge()||getProxy());
 
 const state={nav:'explore',tab:'overview',selected:null,airport:null,mode:canLive()?'live':'demo',view3d:false,studio:false,camera:'chase',demoTime:410,flights:demoFlights(410),
  units:loadPref('units','aviation'),mapStyle:loadPref('mapStyle','map'),projection:loadPref('projection','mercator'),showGround:loadPref('showGround',true),info:{},center:{lat:1.36,lng:103.99},zoom:6.6,
- me:null,search:{q:'',remote:null,results:null}};
+ me:null,search:{q:'',remote:null,results:null},trip:null,tripView:'list',historyRange:'year',mapFilter:null,form:null};
 let studio=null,lastUI=0,lastMapPush=0,lastFrame=0,lastTrail=0,lastSlow=0,lastSelected=0,toastTimer,dialogFocus,infoFor=null,searchTimer,searchSeq=0,pageVisible=true;
 const picks=new Map();// search results not yet on the map, by id
 
 $('#app').innerHTML=`
-<header class="topbar"><button class="brand" data-action="explore" aria-label="Aeris home"><svg viewBox="0 0 32 36" aria-hidden="true"><path d="M2 27 16 3l14 24-14-7Z" fill="#204e51"/><path d="m6 30 10-6 10 6-10 5Z" fill="#d87852"/></svg><span>AERIS</span></button><nav class="nav" aria-label="Main navigation"><button data-action="explore" class="active">Explore</button><button data-action="saved">Saved<span class="saved-count"></span></button><button data-action="airports">Airports</button></nav><div class="top-actions"><button id="source-pill" class="source-pill" data-action="connect" title="Data sources"><span class="dot"></span><span id="source-text">CONNECTING</span></button><button class="iconbutton" data-action="settings" aria-label="Settings" title="Settings">${icon('settings')}</button></div></header>
+<header class="topbar"><button class="brand" data-action="explore" aria-label="Aeris home"><svg viewBox="0 0 32 36" aria-hidden="true"><path d="M2 27 16 3l14 24-14-7Z" fill="#204e51"/><path d="m6 30 10-6 10 6-10 5Z" fill="#d87852"/></svg><span>AERIS</span></button><nav class="nav" aria-label="Main navigation"><button data-action="explore" class="active">Explore</button><button data-action="trips">Trips</button><button data-action="saved">Saved<span class="saved-count"></span></button><button data-action="airports">Airports</button></nav><div class="top-actions"><button id="source-pill" class="source-pill" data-action="connect" title="Data sources"><span class="dot"></span><span id="source-text">CONNECTING</span></button><button class="iconbutton" data-action="settings" aria-label="Settings" title="Settings">${icon('settings')}</button></div></header>
 <div class="workspace"><main class="stage" aria-label="Flight map"><div class="map-canvas" id="map" aria-label="Map of live aircraft"></div><div class="scene-container" id="scene"></div>
 <div class="search-area"><div class="search-box">${icon('search')}<label class="sr-only" for="search">Search flights, airlines, aircraft and airports</label><input id="search" type="search" placeholder="Flight, airline, aircraft or airport" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search" aria-controls="search-results" aria-expanded="false"><button class="search-clear" data-action="clear-search" aria-label="Clear search">${icon('close')}</button></div><div class="search-results" id="search-results" role="listbox"></div></div>
 <div class="map-tools"><div class="tool-group"><button class="compass" data-action="north" aria-label="Reset north and tilt" title="Reset north and tilt"><span>N</span></button></div><div class="tool-group"><button data-action="zoom-in" aria-label="Zoom in" title="Zoom in">${icon('plus')}</button><button data-action="zoom-out" aria-label="Zoom out" title="Zoom out">${icon('minus')}</button></div><div class="tool-group"><button data-action="locate-me" aria-label="Show my location" title="Show my location">${icon('me')}</button><button data-action="map-options" aria-label="Map style and filters" title="Map style and filters">${icon('layers')}</button></div></div>
 <div class="error-inline" role="status" id="feed-error"></div>
-<div class="scene-overlay"><div class="scene-top"><button class="back-map" data-action="map">${icon('back')}Map</button><div class="scene-tag"><strong id="scene-callsign">—</strong><span id="scene-source"></span><span id="scene-fidelity"></span></div></div><div class="scene-actions"><button data-action="scene-style" aria-label="Satellite or map ground" title="Satellite or map ground">${icon('satellite')}</button><button data-action="reset-camera" aria-label="Reset camera" title="Reset camera">${icon('me')}</button></div><div class="camera-bar" role="group" aria-label="Camera"><button data-camera="chase" class="active">${icon('chase')}Follow</button><button data-camera="orbit">${icon('orbit')}Orbit</button><button data-camera="cockpit">${icon('eye')}Cockpit</button><button data-camera="model">${icon('cube')}Model</button></div></div>
+<div class="scene-overlay"><div class="scene-top"><div class="scene-card"><button class="scene-back" data-action="map" aria-label="Back to the map" title="Back to the map">${icon('back')}</button><div class="scene-tag"><strong id="scene-callsign">—</strong><span id="scene-sub"></span></div></div><div class="tool-group scene-tools"><button data-action="scene-style" aria-label="Satellite or map ground" title="Satellite or map ground">${icon('satellite')}</button><button data-action="reset-camera" aria-label="Reset camera" title="Reset camera">${icon('me')}</button></div></div><div class="camera-bar" role="group" aria-label="Camera">${[['chase','chase','Follow'],['orbit','orbit','Orbit'],['cockpit','eye','Cockpit'],['model','cube','Model']].map(([k,ic,l])=>`<button data-camera="${k}" class="${k==='chase'?'active':''}">${icon(ic)}<span>${l}</span></button>`).join('')}</div></div>
 <button class="mobile-detail-toggle" data-action="toggle-detail">${icon('plane')}<span id="mobile-flight-name">Details</span>${icon('arrow')}</button>
 <div class="credits"><span id="map-credit"></span><button data-action="about">About the data</button></div></main>
 <aside class="detail" aria-label="Details" id="detail"></aside></div><dialog id="dialog" aria-labelledby="dialog-title"></dialog><div class="toast" role="status" aria-live="polite" id="toast"></div>`;
@@ -65,9 +69,14 @@ const live=new LiveFeed({storage,onUpdate:()=>{if(state.mode==='live')updateTrai
 for(const id of loadPref('disabledProviders',[]))live.setEnabled(id,false);
 const collection=new Collection(storage);
 const nearAirport=(lat,lon,km)=>{const a=nearestAirports(lat,lon,1,'LMS')[0];return a&&a.distanceKm<=km?a:null;};
-const watcher=new Watcher({collection,live,routeFor,nearAirport,notify:(t,b,tag)=>notify(t,b,tag).catch(()=>{}),onCheck:()=>{if(state.nav==='saved'||(!state.selected&&state.nav==='explore'))renderDetail();syncWatch();}});
-collection.onChange(()=>{renderNav();syncWatch();});
-function syncWatch(){syncWatchList(collection.data.flights.filter(x=>x.notify).map(x=>({callsign:x.callsign,label:x.label,state:x.last?.status||null,squawk:x.last?.squawk||null})));}
+// The iOS/Android app checks watched flights while Aeris is closed; its newer states are merged in before each check.
+const nativeWatch=bridge()?{state:()=>nativeCall('watchState',{},8000).then(r=>Array.isArray(r)?r:[])}:null;
+const watcher=new Watcher({collection,live,routeFor,nearAirport,native:nativeWatch,notify:(t,b,tag)=>notify(t,b,tag).catch(()=>{}),onCheck:seen=>{
+ if(state.nav==='trips'&&state.tripView==='trip'){for(const f of Object.values(seen))if(!live.get(f.id))live.add(f);updatePlan(false);}
+ if(['saved','trips'].includes(state.nav)||(!state.selected&&state.nav==='explore'))renderDetail();syncWatch();}});
+collection.onChange(()=>renderNav());
+let lastSync='';
+function syncWatch(){if(!bridge())return;const items=watcher.items(),key=JSON.stringify(items);if(key===lastSync)return;lastSync=key;syncWatchList(items);}
 // Airports load after the first map frame so they never delay aircraft.
 setTimeout(()=>loadAirports().then(()=>{map.setAirports(airportsGeoJSON());if(state.nav==='airports')renderDetail();}),600);
 if(!map.ok){const v=loadPref('view',null),c=v?.center||[103.99,1.36];onMapMove({west:c[0]-4,east:c[0]+4,south:c[1]-3,north:c[1]+3},7,{lng:c[0],lat:c[1]});}
@@ -76,7 +85,7 @@ function onMapMove(bounds,zoom,center){state.center=center;state.zoom=zoom;live.
 const selected=()=>currentFlights().find(f=>f.id===state.selected)||null;
 function currentFlights(){return state.mode==='demo'?state.flights:live.list();}
 function displayFlight(f){return state.mode==='live'?(live.position(f.id)||f):f;}
-function visibleFlights(){return currentFlights().filter(f=>(state.showGround||!f.onGround)&&(state.mode==='demo'||quality(f).age<=LIMITS.lost));}
+function visibleFlights(){return currentFlights().filter(f=>(state.showGround||!f.onGround)&&(state.mode==='demo'||quality(f).age<=LIMITS.lost)&&(!state.mapFilter||state.mapFilter.has(f.flight||f.callsign)||f.id===state.selected));}
 const stale=f=>!f.simulated&&quality(f).age>LIMITS.stale;
 
 // ——— Formatting ———
@@ -93,11 +102,14 @@ const row=(k,v)=>`<div><dt>${e(k)}</dt><dd>${e(v)}</dd></div>`;
 const closeButton=`<button class="iconbutton detail-close" data-action="toggle-detail" aria-label="Close panel">${icon('close')}</button>`;
 const panelHead=title=>`<div class="panel-head"><h2>${e(title)}</h2>${closeButton}</div>`;
 
-function renderNav(){document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.action===state.nav));$('.saved-count').textContent=collection.count?' · '+collection.count:'';$('.workspace').classList.toggle('has-selection',Boolean(state.selected));}
+function renderNav(){document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.action===state.nav));$('.saved-count').textContent=collection.count?' · '+collection.count:'';
+ const panel=state.nav==='trips'&&state.tripView!=='list';$('.workspace').classList.toggle('has-selection',Boolean(state.selected)||panel);
+ if(panel&&!state.selected)$('#mobile-flight-name').textContent=state.tripView==='history'?'History':collection.trip(state.trip)?.name||'Trip';}
 
 // ——— Selecting things ———
 function selectFlight(id,{fly=false}={}){
  const f=currentFlights().find(f=>f.id===id);if(!f){toast('This aircraft is no longer in the feed.');return;}
+ if(state.nav==='trips')leavePlan();
  state.selected=id;state.nav='explore';state.airport=null;state.tab='overview';live.setFocus(id);closeSearch();
  renderNav();loadInfo(f);renderDetail();updateTrail(true);
  if(fly){const d=displayFlight(f);map.flyTo(d.lat,d.lon,Math.max(map.getZoom(),8));}
@@ -129,7 +141,7 @@ function updateRoute(){const f=selected();if(!f){map.setRoute(null);return;}cons
 function updateTrail(force=false){const t=performance.now();if(!force&&t-lastTrail<1000)return;lastTrail=t;const f=selected();if(!f||!map.trails){map.setTrail([]);return;}
  if(f.simulated){map.setTrail(scenarioTrack(f.id).filter(p=>p.scenarioSeconds<=state.demoTime),f);return;}
  map.setTrail(live.track(f.id),displayFlight(f));}
-function selectAirport(id){state.airport=airportByCode(id);if(!state.airport)return;state.nav='airports';closeSearch();if(state.view3d)closeScene();map.flyTo(state.airport.lat,state.airport.lon,Math.max(map.getZoom(),10));renderNav();renderDetail();if(innerWidth<=800)$('.workspace').classList.add('detail-open');}
+function selectAirport(id){state.airport=airportByCode(id);if(!state.airport)return;if(state.nav==='trips')leavePlan();state.nav='airports';closeSearch();if(state.view3d)closeScene();map.flyTo(state.airport.lat,state.airport.lon,Math.max(map.getZoom(),10));renderNav();renderDetail();if(innerWidth<=800)$('.workspace').classList.add('detail-open');}
 /** Push positions to the map, at a rate that drops as more aircraft are on screen. */
 function pushMap(force=false){
  const t=performance.now(),list=visibleFlights(),interval=list.length<1500?250:list.length<5000?400:700;
@@ -156,17 +168,22 @@ function routeHTML(f){
 function photoHTML(){const p=state.info.photo;if(!p?.src)return '';return `<figure class="airframe-photo"><a href="${e(p.link)}" target="_blank" rel="noreferrer"><img src="${e(p.src)}" alt="This aircraft" loading="lazy" decoding="async"${p.width?` width="${p.width}" height="${p.height}"`:''}></a><figcaption>© ${e(p.photographer)} · <a href="${e(p.link)}" target="_blank" rel="noreferrer">Planespotters.net</a></figcaption></figure>`;}
 function familyText(s){return ({heavy:'Wide-body',jumbo:'Wide-body, four engines',narrow:'Narrow-body',regional:'Regional jet',turboprop:'Turboprop',biz:'Business jet',light:'Light aircraft',heli:'Helicopter'})[s.cls]||'Aircraft';}
 function engineText(s){if(s.generic)return 'Unknown';if(s.rotor)return 'Turbine';return `${s.eng} × ${s.prop?'propeller':'jet'}${s.mount==='tail'?', rear-mounted':s.mount==='tri'?', two on the wings and one in the tail':''}`;}
-function savedFlightStatus(item){
- const f=currentFlights().find(x=>(x.flight||x.callsign)===item.callsign);const l=item.last;
+/** What is known about a flight number now: from the map, or from the last check. Only what was seen. */
+function watchStatus(cs){
+ const f=currentFlights().find(x=>(x.flight||x.callsign)===cs&&!x.simulated);
  if(f)return f.onGround?'On the ground':`In the air · ${fmt(f.altitude,'alt')} ${unit('alt')}`;
- if(!l)return 'Checking…';
- if(l.status==='airborne')return `In the air · ${fmt(l.alt,'alt')} ${unit('alt')}`;
- if(l.status==='ground')return 'On the ground';
- return 'Not in the air'+(l.lastSeen?` · last seen ${ago(now()-l.lastSeen)}`:'');
+ const w=collection.data.watch[cs];if(!w?.status)return null;
+ if(w.status==='airborne')return `In the air · ${fmt(w.alt,'alt')} ${unit('alt')}`;
+ if(w.status==='ground')return w.leg?.landed&&w.leg.at?`Landed at ${w.leg.at.code}`:'On the ground';
+ if(w.leg?.landed&&w.leg.at)return `Landed at ${w.leg.at.code} · ${ago(now()-(w.leg.endSeen||w.seen))}`;
+ return w.seen?`Not in the air · last seen ${ago(now()-w.seen)}`:'Not in the air';
 }
+function savedFlightStatus(item){return watchStatus(item.callsign)||'Checking…';}
+const alertModeText=m=>({next:'Alerts: next flight',every:'Alerts: every flight'})[m]||'';
 function renderDetail(){
  const d=$('#detail');
  if(state.nav==='saved'){d.innerHTML=savedHTML();return;}
+ if(state.nav==='trips'){const t=collection.trip(state.trip);d.innerHTML=state.tripView==='history'?historyHTML():state.tripView==='trip'&&t?tripHTML(t):tripsHTML();return;}
  if(state.nav==='airports'){d.innerHTML=state.airport?airportHTML(state.airport):airportsHTML();return;}
  const f=selected();if(!f){d.innerHTML=exploreHTML();return;}
  const t=typeFor(f.type,f.category),spec=t.spec,info=state.info,cs=f.flight||f.callsign;
@@ -179,22 +196,22 @@ function renderDetail(){
  const sub=[isAirlineFlight&&flightNumber(cs)?cs:null,airlineName(f)||f.registration].filter(Boolean).join(' · ');
  d.innerHTML=`<div class="detail-inner"><div class="detail-caption"><span class="tag ${f.emergency?'alert':''}">${e(status)}</span><span class="caption-age" id="detail-data-status">${e(f.simulated?'Demo traffic':ago(quality(f).age))}</span><button class="iconbutton" data-action="deselect" aria-label="Close flight">${icon('close')}</button></div>
 <div class="airline-row"><span class="airline-monogram">${e((airlineFor(cs)?.iata||cs).slice(0,2))}</span><div class="flight-heading"><h2>${e(titleOf(f))}</h2><p>${e(sub||'Unknown operator')}</p></div></div>
-${f.simulated?'':`<div class="action-row"><button class="secondary ${(isAirlineFlight?savedFlight:savedAircraft)?'on':''}" data-action="save-flight" aria-pressed="${Boolean(isAirlineFlight?savedFlight:savedAircraft)}">${icon('star')}${(isAirlineFlight?savedFlight:savedAircraft)?'Saved':'Save'}</button>${isAirlineFlight?`<button class="secondary ${savedFlight?.notify?'on':''}" data-action="notify-flight" aria-pressed="${Boolean(savedFlight?.notify)}">${icon('bell')}Alerts</button>`:''}<button class="secondary" data-action="3d">${icon('cube')}3D</button></div>`}
-${f.simulated?`<div class="action-row"><button class="secondary" data-action="3d">${icon('cube')}3D</button></div>`:''}
+${f.simulated?'':`<div class="action-row"><button class="secondary ${(isAirlineFlight?savedFlight:savedAircraft)?'on':''}" data-action="save-flight" aria-pressed="${Boolean(isAirlineFlight?savedFlight:savedAircraft)}">${icon('star')}${(isAirlineFlight?savedFlight:savedAircraft)?'Saved':'Save'}</button>${isAirlineFlight?`<button class="secondary ${savedFlight&&savedFlight.alerts!=='off'?'on':''}" data-action="notify-flight">${icon('bell')}Alerts</button><button class="secondary" data-action="add-to-trip">${icon('trip')}Trip</button>`:''}</div>`}
 <div class="route-card">${routeHTML(f)}<div class="route-status"><span class="phase"><span class="dot"></span><span id="flight-phase">${phase(f)}</span></span></div></div>
+<button class="view-card" data-action="3d" aria-label="View ${e(titleOf(f))} in 3D">${planeSVG}<span class="view-label"><strong>View in 3D</strong><small>Follow, orbit or cockpit over real terrain</small></span><span class="view-arrow">${icon('arrow')}</span></button>
 <div class="detail-tabs" role="tablist">${['overview','aircraft','telemetry'].map(x=>`<button role="tab" aria-selected="${state.tab===x}" class="${state.tab===x?'active':''}" data-tab="${x}">${x[0].toUpperCase()+x.slice(1)}</button>`).join('')}</div><div role="tabpanel">${content}</div></div>`;
  $('#mobile-flight-name').textContent=titleOf(f);$('#scene-callsign').textContent=titleOf(f)+' · '+spec.name;
 }
 function exploreHTML(){
- const flying=collection.data.flights.map(item=>({item,f:currentFlights().find(x=>(x.flight||x.callsign)===item.callsign)})).filter(x=>x.f||x.item.last?.status==='airborne');
+ const flying=collection.data.flights.map(item=>({item,f:currentFlights().find(x=>(x.flight||x.callsign)===item.callsign&&!x.simulated)})).filter(x=>(x.f&&!x.f.onGround)||(!x.f&&collection.data.watch[x.item.callsign]?.status==='airborne'));
  return `<div class="detail-inner">${panelHead('Find a flight')}<p class="lead">Search for a flight number, airline, aircraft type, registration or airport. Or tap a plane on the map.</p><div class="examples">${['SQ 22','Lufthansa','A380','9V-SMU','Changi'].map(x=>`<button class="chip" data-example="${e(x)}">${e(x)}</button>`).join('')}</div>${flying.length?`<div class="section-sub">YOUR FLIGHTS IN THE AIR</div>${flying.map(({item,f})=>f?flightRow(f):`<button class="flight-list-item" data-saved-flight="${e(item.callsign)}"><span class="airline-monogram">${e(item.label.slice(0,2))}</span><span><strong>${e(item.label)}</strong><small>${e(savedFlightStatus(item))}</small></span>${icon('arrow')}</button>`).join('')}`:''}${state.mode==='demo'&&!canLive()?`<div class="notice"><strong>Showing demo traffic.</strong><br>Web browsers cannot read the live flight feeds. Install the Aeris app on iPhone or Android, or add a data proxy, to see real aircraft.<br><button class="small-link" data-action="connect">Data sources →</button></div>`:''}</div>`;
 }
 function savedHTML(){
  const c=collection.data;
- const flights=c.flights.map(x=>`<div class="saved-row"><button class="saved-main" data-saved-flight="${e(x.callsign)}"><strong>${e(x.label)}</strong><small>${e([x.airline,savedFlightStatus(x)].filter(Boolean).join(' · '))}</small></button><button class="iconbutton bell ${x.notify?'on':''}" data-bell="${e(x.callsign)}" aria-pressed="${x.notify}" aria-label="Alerts for ${e(x.label)}" title="Alerts">${icon('bell')}</button><button class="iconbutton" data-remove-flight="${e(x.callsign)}" aria-label="Remove ${e(x.label)}" title="Remove">${icon('close')}</button></div>`).join('');
+ const flights=c.flights.map(x=>`<div class="saved-row"><button class="saved-main" data-saved-flight="${e(x.callsign)}"><strong>${e(x.label)}</strong><small>${e([x.airline,savedFlightStatus(x)].filter(Boolean).join(' · '))}</small>${x.alerts!=='off'?`<small class="mode">${e(alertModeText(x.alerts))}</small>`:''}</button><button class="iconbutton bell ${x.alerts!=='off'?'on':''}" data-bell="${e(x.callsign)}" aria-label="Alerts for ${e(x.label)}" title="Alerts">${icon('bell')}</button><button class="iconbutton" data-remove-flight="${e(x.callsign)}" aria-label="Remove ${e(x.label)}" title="Remove">${icon('close')}</button></div>`).join('');
  const aircraft=c.aircraft.map(x=>{const f=currentFlights().find(y=>y.id===x.hex);return `<div class="saved-row"><button class="saved-main" data-saved-aircraft="${e(x.hex)}"><strong>${e(x.label)}</strong><small>${e([x.type&&typeFor(x.type).spec.name,f?(f.onGround?'On the ground':'In the air as '+titleOf(f)):null].filter(Boolean).join(' · ')||'Aircraft')}</small></button><button class="iconbutton" data-remove-aircraft="${e(x.hex)}" aria-label="Remove ${e(x.label)}" title="Remove">${icon('close')}</button></div>`;}).join('');
  const airports=c.airports.map(x=>`<div class="saved-row"><button class="saved-main" data-airport="${e(x.iata||x.icao)}"><strong>${e(x.iata||x.icao)} · ${e(x.name)}</strong><small>${e(x.city)}</small></button><button class="iconbutton" data-remove-airport="${e(x.icao)}" aria-label="Remove ${e(x.name)}" title="Remove">${icon('close')}</button></div>`).join('');
- return `<div class="detail-inner">${panelHead('Saved')}${!collection.count?`<p class="lead">Nothing saved yet. Tap the star on a flight, aircraft or airport to keep it here.</p>`:''}${flights?`<div class="section-sub">FLIGHTS</div>${flights}`:''}${aircraft?`<div class="section-sub">AIRCRAFT</div>${aircraft}`:''}${airports?`<div class="section-sub">AIRPORTS</div>${airports}`:''}${c.flights.length?`<p class="fact-note">Flights with the bell on send alerts for take-off, approach, landing and emergency codes. ${backgroundChecks()?'Aeris checks every minute while open, and every 15 minutes or more when closed (your phone decides exactly when).':'They arrive while Aeris is open. Install the app to get them when it is closed.'}</p>`:''}</div>`;
+ return `<div class="detail-inner">${panelHead('Saved')}${!collection.count?`<p class="lead">Nothing saved yet. Tap the star on a flight, aircraft or airport to keep it here.</p>`:''}${flights?`<div class="section-sub">FLIGHTS</div>${flights}`:''}${aircraft?`<div class="section-sub">AIRCRAFT</div>${aircraft}`:''}${airports?`<div class="section-sub">AIRPORTS</div>${airports}`:''}${c.flights.length?`<p class="fact-note">${alertsNote()}</p>`:''}</div>`;
 }
 function runwayPlan(a){
  const rw=a.runways.filter(r=>r.ends&&r.ends.flat().every(Number.isFinite));if(!rw.length)return '';
@@ -210,11 +227,175 @@ function airportHTML(a){const lt=localTime(a),traffic=airportTraffic(a),saved=co
 function renderSource(){
  const s=live.status(),pill=$('#source-pill');let label;
  if(state.mode==='demo')label='DEMO';
- else if(s.live){const age=Math.max(0,now()-(s.lastUpdate||now()));label=`LIVE · ${age<10?age.toFixed(1):Math.round(age)} s`;}
+ else if(s.live){const age=Math.max(0,now()-(s.lastUpdate||now()));label=`LIVE<span class="pill-extra"> · ${age<10?age.toFixed(1):Math.round(age)} s</span>`;}
  else label=s.providers.some(p=>p.enabled&&p.reachable&&p.fail>0)?'RECONNECTING':'CONNECTING';
- $('#source-text').textContent=label;pill.classList.toggle('live',state.mode==='live'&&s.live);pill.classList.toggle('error',state.mode==='live'&&!s.live&&s.providers.some(p=>p.fail>2));
+ $('#source-text').innerHTML=label;pill.classList.toggle('live',state.mode==='live'&&s.live);pill.classList.toggle('error',state.mode==='live'&&!s.live&&s.providers.some(p=>p.fail>2));
 }
 function refresh(){renderNav();renderDetail();renderSource();pushMap(true);}
+
+// ——— Trips and history ———
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const fmtDate=d=>{const [y,m,day]=d.split('-').map(Number);return `${day} ${MONTHS[m-1]} ${y}`;};
+const today=()=>localDate(now());
+const km=n=>Math.round(n).toLocaleString('en-SG');
+function alertsNote(){return 'Alerts come once per flight: take-off, descent into the destination, landing, and emergency codes. '+(backgroundChecks()?'Aeris checks every minute while open. When it is closed, your phone lets it check every 15 minutes or so, sometimes less often.':'They arrive while Aeris is open. Install the app to get them when it is closed.');}
+function dateRange(t){const ds=t.flights.map(x=>x.date).sort();if(!ds.length)return 'No flights yet';const a=fmtDate(ds[0]),b=fmtDate(ds.at(-1));return a===b?a:`${a.replace(/ \d{4}$/,ds[0].slice(0,4)===ds.at(-1).slice(0,4)?'':' '+ds[0].slice(0,4))} – ${b}`;}
+function routeCodes(list){const codes=[];for(const x of list){if(x.from&&codes.at(-1)!==x.from.code)codes.push(x.from.code);if(x.to)codes.push(x.to.code);}return codes.join(' → ');}
+const lineKm=x=>x.from&&x.to?distance([x.from.lat,x.from.lon],[x.to.lat,x.to.lon])/1000:0;
+function historyFor(cs,date){return collection.data.history.find(h=>h.callsign===cs&&Math.abs(daysBetween(h.date,date))<=1)||null;}
+/** A trip flight's status, from what was seen. cls: live | done | '' */
+function tripFlightStatus(x){
+ const diff=daysBetween(today(),x.date),h=historyFor(x.callsign,x.date);
+ if(h)return {text:h.landedAt?`Flown · landed ${new Date(h.landedAt*1000).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',...(h.to?.tz?{timeZone:h.to.tz}:{})})}`:'Flown',cls:'done'};
+ if(Math.abs(diff)<=1){
+  const f=currentFlights().find(y=>(y.flight||y.callsign)===x.callsign&&!y.simulated),w=collection.data.watch[x.callsign];
+  if(f&&!f.onGround)return {text:`In the air · ${fmt(f.altitude,'alt')} ${unit('alt')}`,cls:'live'};
+  if(w?.leg?.landed&&Math.abs(daysBetween(localDate(w.leg.start),x.date))<=1)return {text:`Landed at ${w.leg.at?.code||''}`,cls:'done'};
+  if(w?.status==='airborne'&&now()-w.seen<900)return {text:`In the air · ${fmt(w.alt,'alt')} ${unit('alt')}`,cls:'live'};
+  return {text:diff===0?'Today':diff===1?'Tomorrow':'Yesterday',cls:''};
+ }
+ return diff>1?{text:`In ${diff} days`,cls:''}:{text:'Not flown with Aeris watching',cls:'done'};
+}
+function tripCard(t){
+ const next=t.flights.find(x=>daysBetween(today(),x.date)>=-1);
+ return `<button class="trip-card" data-open-trip="${e(t.id)}"><span class="trip-card-main"><strong>${e(t.name)}</strong><small>${e(dateRange(t))}</small><small>${t.flights.length} flight${t.flights.length===1?'':'s'}${t.flights.length?' · '+e(routeCodes(t.flights)):''}</small></span><span class="trip-card-end">${next?e(tripFlightStatus(next).text):t.flights.length?'Done':''}</span>${icon('arrow')}</button>`;
+}
+function historyIn(range){
+ const list=collection.data.history;if(range==='all')return list;
+ if(range==='year'){const from=localDate(now()-365*86400);return list.filter(h=>h.date>=from);}
+ return list.filter(h=>h.date.startsWith(range));
+}
+function historyStats(list){
+ const airports=new Set(),airlines=new Set();let dist=0,air=0,timed=0;
+ for(const h of list){if(h.from)airports.add(h.from.code);if(h.to)airports.add(h.to.code);if(h.airline)airlines.add(h.airline);dist+=h.distanceKm||0;if(h.takeoffAt&&h.landedAt){air+=h.landedAt-h.takeoffAt;timed++;}}
+ return {count:list.length,km:dist,airports:airports.size,airlines:airlines.size,air,timed};
+}
+function tripsHTML(){
+ const h=historyStats(historyIn('year')),trips=collection.data.trips;
+ return `<div class="detail-inner">${panelHead('Trips')}
+<button class="history-card" data-action="history"><span class="history-icon">${icon('globe')}</span><span class="history-text"><strong>Flight history</strong><small>${h.count?`${h.count} flight${h.count===1?'':'s'} · ${km(h.km)} km in the past year`:'Your flights, logged as you fly them'}</small></span>${icon('arrow')}</button>
+<div class="section-head"><span>YOUR TRIPS</span><button class="small-button" data-action="new-trip">${icon('plus')}New trip</button></div>
+${trips.length?`<div class="trip-list">${trips.map(tripCard).join('')}</div>`:`<p class="lead">A trip is a set of flights with dates: a holiday, a work trip, or someone coming home. Open it to see its route, and only its planes, on the map.</p>`}</div>`;
+}
+function tripHTML(t){
+ const total=t.flights.reduce((a,x)=>a+lineKm(x),0);
+ const rows=t.flights.map(x=>{const st=tripFlightStatus(x),[y,m,d]=x.date.split('-');return `<div class="trip-flight"><button class="trip-flight-main" data-trip-flight="${e(x.id)}"><span class="date-tile"><b>${Number(d)}</b><small>${MONTHS[Number(m)-1]}</small></span><span class="trip-flight-text"><strong>${e(x.label)}${x.from&&x.to?` <span class="codes">${e(x.from.code)} → ${e(x.to.code)}</span>`:''}</strong><small>${e(x.airline||'')}</small><span class="status-line ${st.cls}">${e(st.text)}</span></span></button><button class="iconbutton" data-remove-trip-flight="${e(x.id)}" aria-label="Remove ${e(x.label)}" title="Remove">${icon('close')}</button></div>`;}).join('');
+ return `<div class="detail-inner"><div class="detail-caption"><button data-action="trips-list">${icon('back')} TRIPS</button><button class="iconbutton" data-action="edit-trip" aria-label="Rename or delete this trip" title="Rename or delete">${icon('edit')}</button>${closeButton}</div>
+<h2>${e(t.name)}</h2><p class="sub">${e(dateRange(t))}${t.flights.length?` · ${t.flights.length} flight${t.flights.length===1?'':'s'}${total?` · ${km(total)} km`:''}`:''}</p>
+${rows?`<div class="trip-flights">${rows}</div>`:`<p class="lead">No flights yet. Add each flight with its date.</p>`}
+<button class="secondary wide" data-action="add-trip-flight">${icon('plus')}Add a flight</button>
+<div class="settings-group"><label class="switch-row"><span>Alerts for these flights<small>On the day of each flight</small></span><input type="checkbox" data-trip-setting="alerts" ${t.alerts?'checked':''}></label><label class="switch-row"><span>These are my flights<small>Add them to my flight history once flown</small></span><input type="checkbox" data-trip-setting="mine" ${t.mine?'checked':''}></label></div></div>`;
+}
+function historyHTML(){
+ const years=[...new Set(collection.data.history.map(h=>h.date.slice(0,4)))].sort().reverse();
+ const list=historyIn(state.historyRange),st=historyStats(list);
+ const groups=new Map();for(const h of list){const k=h.date.slice(0,7);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(h);}
+ const rows=[...groups].map(([k,hs])=>{const [y,m]=k.split('-');return `<div class="section-sub">${MONTHS[Number(m)-1].toUpperCase()} ${y}</div>${hs.map(h=>{const [,,d]=h.date.split('-');const dur=h.takeoffAt&&h.landedAt?duration(Math.round((h.landedAt-h.takeoffAt)/60)):null;
+  return `<div class="trip-flight"><div class="trip-flight-main static"><span class="date-tile"><b>${Number(d)}</b><small>${MONTHS[Number(m)-1]}</small></span><span class="trip-flight-text"><strong>${e(h.label)}${h.from&&h.to?` <span class="codes">${e(h.from.code)} → ${e(h.to.code)}</span>`:''}</strong><small>${e([h.airline,h.distanceKm?km(h.distanceKm)+' km':null,dur].filter(Boolean).join(' · '))}</small><span class="status-line">${h.source==='tracked'?'Seen by Aeris':'Added by you'}</span></span></div><button class="iconbutton" data-remove-history="${e(h.id)}" aria-label="Remove ${e(h.label)} on ${e(fmtDate(h.date))}" title="Remove">${icon('close')}</button></div>`;}).join('')}`;}).join('');
+ return `<div class="detail-inner"><div class="detail-caption"><button data-action="trips-list">${icon('back')} TRIPS</button>${closeButton}</div><h2>Flight history</h2>
+<div class="segmented" role="tablist">${[['year','Past year'],...years.slice(0,3).map(y=>[y,y]),['all','All']].map(([k,l])=>`<button role="tab" aria-selected="${state.historyRange===k}" class="${state.historyRange===k?'active':''}" data-history-range="${k}">${l}</button>`).join('')}</div>
+<div class="stat-grid"><div><b>${st.count}</b><small>Flights</small></div><div><b>${km(st.km)}</b><small>Kilometres</small></div><div><b>${st.airports}</b><small>Airports</small></div><div><b>${st.airlines}</b><small>Airlines</small></div></div>
+${st.timed?`<p class="fact-note">Time in the air: ${duration(Math.round(st.air/60))}, from the ${st.timed} flight${st.timed===1?'':'s'} Aeris saw take off and land.</p>`:''}
+<button class="secondary wide" data-action="add-past-flight">${icon('plus')}Add a past flight</button>
+${rows||`<p class="lead">Flights in trips marked “These are my flights” are added here after Aeris sees them land. You can also add past flights yourself.</p>`}</div>`;
+}
+/** Map for the open trip or the history: their routes, and only the trip's own planes. */
+function updatePlan(fit=true){
+ let lines=[],filter=null;
+ if(state.nav==='trips'&&state.tripView==='trip'){const t=collection.trip(state.trip);if(t){
+  lines=t.flights.filter(x=>x.from&&x.to).map(x=>({from:x.from,to:x.to,state:tripFlightStatus(x).cls==='live'?'live':tripFlightStatus(x).cls==='done'?'done':'next'}));
+  filter=new Set(t.flights.filter(x=>Math.abs(daysBetween(today(),x.date))<=1).map(x=>x.callsign));}}
+ else if(state.nav==='trips'&&state.tripView==='history'){lines=historyIn(state.historyRange).filter(h=>h.from&&h.to).map(h=>({from:h.from,to:h.to,state:'done'}));filter=new Set();}
+ map.setPlan(lines.length?{lines}:null);state.mapFilter=filter;
+ live.setTracked(filter?currentFlights().filter(f=>filter.has(f.flight||f.callsign)).map(f=>f.id):[]);
+ if(fit&&lines.length)map.fitPlan(innerWidth<=800?40:70);
+ pushMap(true);
+}
+function leavePlan(){state.mapFilter=null;map.setPlan(null);live.setTracked([]);}
+async function openTrip(id){
+ state.nav='trips';state.tripView='trip';state.trip=id;if(state.selected)deselect();renderNav();renderDetail();updatePlan(true);
+ if(innerWidth<=800)$('.workspace').classList.add('detail-open');
+ // Today's flights of the trip, wherever they are.
+ const t=collection.trip(id);if(state.mode!=='live'||!t)return;
+ for(const x of t.flights.filter(x=>Math.abs(daysBetween(today(),x.date))<=1)){
+  try{const f=(await live.query('callsign',x.callsign)).find(f=>f.lat!=null);if(f&&!live.get(f.id))live.add(f);}catch{}
+ }
+ if(state.trip===id&&state.tripView==='trip'){updatePlan(false);renderDetail();}
+}
+// ——— Forms: a flight with a date (for a trip or the history) ———
+function flightFormHTML({title,date,max=null,submit,note=''}){
+ return `<form class="flight-form" data-form="flight" novalidate><label class="form-field">Flight number<input id="ff-flight" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="SQ 22" required></label>
+<label class="form-field">Date<input id="ff-date" type="date" value="${e(date)}"${max?` max="${e(max)}"`:''} required></label>
+<div class="form-row"><label class="form-field">From<input id="ff-from" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="SIN"></label><label class="form-field">To<input id="ff-to" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="EWR"></label></div>
+<p class="form-hint" id="ff-hint">${e(note||'Enter the flight number. Aeris fills in the usual route; change it if yours was different.')}</p><div class="form-error" id="ff-error"></div>
+<div class="button-row"><button class="primary" type="submit">${e(submit)}</button><button class="secondary" type="button" data-action="close-dialog">Cancel</button></div></form>`;
+}
+let lookupTimer,lookupSeq=0;
+function lookupFormRoute(){
+ clearTimeout(lookupTimer);const v=$('#ff-flight')?.value||'';const cs=directLookups(v).find(l=>l.kind==='callsign')?.value;
+ if(!cs){$('#ff-hint').textContent=v.trim().length>2?'Use an airline flight number, like SQ 22 or BA 15.':'Enter the flight number. Aeris fills in the usual route; change it if yours was different.';return;}
+ const seq=++lookupSeq;$('#ff-hint').textContent='Looking up the route…';
+ lookupTimer=setTimeout(async()=>{const r=await routeFor(cs).catch(()=>null);if(seq!==lookupSeq||!$('#ff-hint'))return;
+  if(r){const o=r.origin.iata||r.origin.icao,d=r.destination.iata||r.destination.icao;if(!$('#ff-from').value||$('#ff-from').dataset.auto)Object.assign($('#ff-from'),{value:o}).dataset.auto='1';if(!$('#ff-to').value||$('#ff-to').dataset.auto)Object.assign($('#ff-to'),{value:d}).dataset.auto='1';
+   $('#ff-hint').textContent=`${flightNumber(cs)||cs} usually flies ${o} → ${d} (${r.source}). Change it if yours was different.`;}
+  else $('#ff-hint').textContent='No route on record for this flight. Enter the airports yourself.';},350);
+}
+function readFlightForm(){
+ const err=m=>{$('#ff-error').textContent=m;return null;};
+ const cs=directLookups($('#ff-flight').value).find(l=>l.kind==='callsign')?.value;if(!cs)return err('Enter an airline flight number, like SQ 22.');
+ const date=$('#ff-date').value;if(!/^\d{4}-\d\d-\d\d$/.test(date))return err('Choose a date.');
+ const code=id=>$(id).value.trim().toUpperCase();const from=code('#ff-from')?airportByCode(code('#ff-from')):null,to=code('#ff-to')?airportByCode(code('#ff-to')):null;
+ if(code('#ff-from')&&!from)return err(`No airport with the code ${code('#ff-from')}.`);if(code('#ff-to')&&!to)return err(`No airport with the code ${code('#ff-to')}.`);
+ return {callsign:cs,date,from,to};
+}
+function showTripFlightForm(){const t=collection.trip(state.trip);if(!t)return;state.form={kind:'trip',trip:t.id};const last=t.flights.at(-1)?.date;openDialog('Add a flight',flightFormHTML({title:'',date:last&&last>today()?last:today(),submit:'Add to trip'}));}
+function showPastFlightForm(){state.form={kind:'history'};openDialog('Add a past flight',flightFormHTML({title:'',date:today(),max:today(),submit:'Add to history',note:'Enter the flight number and the date you flew. Aeris fills in the usual route; change it if yours was different.'}));}
+function showNewTrip(after=null){state.form={kind:'new-trip',after};openDialog('New trip',`<form data-form="trip" novalidate><label class="form-field">Name<input id="trip-name" maxlength="60" placeholder="Tokyo, December" required></label><div class="form-error" id="trip-error"></div><div class="button-row"><button class="primary" type="submit">Create</button><button class="secondary" type="button" data-action="close-dialog">Cancel</button></div></form>`);}
+function showEditTrip(){const t=collection.trip(state.trip);if(!t)return;state.form={kind:'edit-trip'};openDialog('Trip',`<form data-form="trip" novalidate><label class="form-field">Name<input id="trip-name" maxlength="60" value="${e(t.name)}" required></label><div class="form-error" id="trip-error"></div><div class="button-row"><button class="primary" type="submit">Save</button><button class="secondary danger" type="button" data-action="delete-trip">${icon('trash')}Delete trip</button></div></form>`);}
+function showAddToTrip(){
+ const f=selected();if(!f)return;const cs=f.flight||f.callsign;state.form={kind:'add-to-trip',callsign:cs};
+ const trips=collection.data.trips;
+ openDialog(`Add ${titleOf(f)} to a trip`,`<form data-form="add-to-trip" novalidate><label class="form-field">Date<input id="att-date" type="date" value="${e(today())}" required></label>
+${trips.length?`<div class="choice-list" role="radiogroup">${trips.map((t,i)=>`<label class="choice"><input type="radio" name="att-trip" value="${e(t.id)}" ${i===0?'checked':''}><span><b>${e(t.name)}</b><small>${e(dateRange(t))}</small></span></label>`).join('')}<label class="choice"><input type="radio" name="att-trip" value="new"><span><b>New trip</b></span></label></div>`:'<input type="hidden" name="att-trip" value="new">'}
+<label class="form-field" id="att-new"${trips.length?' hidden':''}>New trip name<input id="att-name" maxlength="60" placeholder="Tokyo, December"></label><div class="form-error" id="att-error"></div>
+<div class="button-row"><button class="primary" type="submit">Add</button><button class="secondary" type="button" data-action="close-dialog">Cancel</button></div></form>`);
+}
+function submitForm(form){
+ const k=state.form?.kind;
+ if(form.dataset.form==='flight'){
+  const v=readFlightForm();if(!v)return;
+  if(k==='trip'){const x=collection.addTripFlight(state.form.trip,v);if(!x){$('#ff-error').textContent='This flight is already in the trip.';return;}closeDialog();toast(`${x.label} on ${fmtDate(x.date)} added.`);renderDetail();updatePlan(true);syncWatch();}
+  else if(k==='history'){if(v.date>today()){$('#ff-error').textContent='That date has not happened yet. Add future flights to a trip.';return;}if(!v.from||!v.to){$('#ff-error').textContent='Enter both airports so the distance can be worked out.';return;}
+   const h=collection.addHistory({...v,source:'added'});if(!h){$('#ff-error').textContent='This flight is already in your history.';return;}closeDialog();toast(`${h.label} on ${fmtDate(h.date)} added to your history.`);renderDetail();updatePlan(true);}
+ }else if(form.dataset.form==='trip'){
+  const name=$('#trip-name').value.trim();if(!name){$('#trip-error').textContent='Give the trip a name.';return;}
+  if(k==='edit-trip'){collection.updateTrip(state.trip,{name});closeDialog();renderDetail();renderNav();}
+  else{const t=collection.addTrip(name);closeDialog();openTrip(t.id);}
+ }else if(form.dataset.form==='add-to-trip'){
+  const date=$('#att-date').value,choice=form.querySelector('[name="att-trip"]:checked')?.value||form.querySelector('[name="att-trip"]')?.value;
+  if(!/^\d{4}-\d\d-\d\d$/.test(date)){$('#att-error').textContent='Choose a date.';return;}
+  let tripId=choice;if(choice==='new'){const name=$('#att-name').value.trim();if(!name){$('#att-error').textContent='Give the new trip a name.';return;}tripId=collection.addTrip(name).id;}
+  const r=state.info.route,f=selected(),fit=f&&r?routeCheck(f):null;
+  const x=collection.addTripFlight(tripId,{callsign:state.form.callsign,date,from:fit?.plausible?airportByCode(r.origin.icao||r.origin.iata)||r.origin:null,to:fit?.plausible?airportByCode(r.destination.icao||r.destination.iata)||r.destination:null});
+  closeDialog();toast(x?`${x.label} added to ${collection.trip(tripId).name}.`:'Could not add this flight.');syncWatch();
+ }
+}
+// ——— Alerts ———
+function showAlerts(cs,f=null){
+ const item=collection.flight(cs),mode=item?.alerts||'off',label=item?.label||flightNumber(cs)||cs;state.form={kind:'alerts',callsign:cs,flight:f};
+ openDialog(`Alerts for ${label}`,`<div class="choice-list" role="radiogroup" aria-label="When to send alerts">${[['off','Off',''],['next','Next flight','Stops after it lands'],['every','Every flight','For a flight someone takes regularly']].map(([k,l,n])=>`<button class="choice ${mode===k?'active':''}" role="radio" aria-checked="${mode===k}" data-alert-mode="${k}"><span class="radio-mark"></span><span><b>${l}</b>${n?`<small>${n}</small>`:''}</span></button>`).join('')}</div><p class="fact-note">${e(alertsNote())}</p>`);
+}
+async function setAlertMode(cs,mode,f=null){
+ if(mode!=='off'){
+  let perm;try{perm=await notificationPermission(true);}catch{perm='unsupported';}
+  if(perm!=='granted'){toast(perm==='unsupported'?'This browser cannot show notifications. Use the Aeris app.':'Notifications are off for Aeris. Turn them on in your phone settings.');return false;}
+ }
+ let item=collection.flight(cs);
+ if(!item){if(mode==='off'){closeDialog();return true;}item=collection.addFlight(f||{callsign:cs});if(!item)return false;}
+ collection.setAlerts(cs,mode);closeDialog();
+ toast(mode==='off'?`Alerts off for ${item.label}.`:mode==='next'?`Alerts on for ${item.label}'s next flight.`:`Alerts on for every ${item.label} flight.`);
+ renderDetail();syncWatch();setTimeout(()=>watcher.check(),300);return true;
+}
 
 // ——— Search ———
 function clearSearchText(){$('#search').value='';state.search.q='';$('.search-box').classList.remove('has-text');}
@@ -298,19 +479,24 @@ function setStudio(on){state.studio=on;$('.workspace').classList.toggle('studio-
 function setCamera(mode){state.camera=mode;setStudio(mode==='model');if(mode!=='model')map.setCamera(mode);document.querySelectorAll('[data-camera]').forEach(b=>{b.classList.toggle('active',b.dataset.camera===mode);b.setAttribute('aria-pressed',String(b.dataset.camera===mode));});}
 function exportTrack(){const f=selected();if(!f)return;const points=live.track(f.id);if(!points.length){toast('No positions recorded yet.');return;}const quote=v=>'"'+String(v??'').replace(/^[=+@\-]/,"'").replaceAll('"','""')+'"';const head=['callsign','timestamp_utc','latitude','longitude','altitude_ft','gps_altitude_ft','ground_speed_kt','vertical_rate_ft_min','track_deg'];const csv=[head.join(','),...points.map(p=>[p.callsign,new Date(p.positionTime*1000).toISOString(),p.lat,p.lon,p.altitude,p.geometricAltitude,p.groundSpeed,p.verticalRate,p.track].map(quote).join(','))].join('\r\n');const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='aeris-'+f.callsign.replace(/[^a-z0-9]/gi,'_')+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 
-// ——— Saving and alerts ———
-async function toggleAlerts(cs,f){
- let item=collection.flight(cs);
- if(item?.notify){collection.setNotify(cs,false);toast(`Alerts off for ${item.label}.`);renderDetail();return;}
- const perm=await notificationPermission(true);
- if(perm!=='granted'){toast(perm==='unsupported'?'This browser cannot show notifications. Use the Aeris app.':'Notifications are blocked for Aeris. Turn them on in your device settings.');return;}
- if(!item)item=collection.addFlight(f||{callsign:cs});if(!item)return;
- collection.setNotify(cs,true);toast(`Alerts on for ${item.label}: take-off, approach, landing and emergencies.`);renderDetail();watcher.check();
+// ——— Actions ———
+/** Switch the side panel; leaving Trips takes its routes off the map. */
+function go(nav){if(state.nav==='trips'&&nav!=='trips')leavePlan();state.nav=nav;renderNav();if(innerWidth<=800)$('.workspace').classList.add('detail-open');}
+function tripFlightTap(id){
+ const t=collection.trip(state.trip),x=t?.flights.find(y=>y.id===id);if(!x)return;
+ if(Math.abs(daysBetween(today(),x.date))<=1){findAndGo('callsign',x.callsign,x.label);return;}
+ if(x.from&&x.to&&map.map){const w=Math.min(x.from.lon,x.to.lon),e2=Math.max(x.from.lon,x.to.lon);if(e2-w<180)map.map.fitBounds([[w,Math.min(x.from.lat,x.to.lat)],[e2,Math.max(x.from.lat,x.to.lat)]],{padding:innerWidth<=800?40:80,maxZoom:7,duration:600});}
+ toast(daysBetween(today(),x.date)>1?`${x.label} is on ${fmtDate(x.date)}. Aeris starts watching it the day before.`:`${x.label} flew on ${fmtDate(x.date)}.`);
 }
 const actions={
- explore(){state.nav='explore';state.airport=null;renderNav();renderDetail();if(innerWidth<=800)$('.workspace').classList.add('detail-open');},
- saved(){state.nav='saved';renderNav();renderDetail();if(innerWidth<=800)$('.workspace').classList.add('detail-open');watcher.check();},
- airports(){state.nav='airports';state.airport=null;renderNav();renderDetail();if(innerWidth<=800)$('.workspace').classList.add('detail-open');},
+ explore(){go('explore');state.airport=null;renderDetail();},
+ saved(){go('saved');renderDetail();watcher.check();},
+ airports(){go('airports');state.airport=null;renderDetail();},
+ trips(){go('trips');state.tripView='list';state.trip=null;renderNav();renderDetail();updatePlan(false);},
+ 'trips-list'(){state.tripView='list';state.trip=null;renderNav();renderDetail();updatePlan(false);},
+ history(){state.tripView='history';renderNav();renderDetail();updatePlan(true);},
+ 'new-trip':()=>showNewTrip(),'edit-trip':showEditTrip,'add-trip-flight':showTripFlightForm,'add-past-flight':showPastFlightForm,'add-to-trip':showAddToTrip,
+ 'delete-trip'(){const b=$('#dialog [data-action="delete-trip"]');if(b&&!b.dataset.confirm){b.dataset.confirm='1';b.lastChild.textContent='Tap again to delete';return;}const t=collection.trip(state.trip);collection.removeTrip(state.trip);closeDialog();toast(`${t?.name||'Trip'} deleted.`);actions['trips-list']();},
  'zoom-in':()=>map.zoom(2),'zoom-out':()=>map.zoom(.5),north:()=>map.resetNorth(),'locate-me':()=>locateMe(true),'map-options':showMapOptions,
  settings:showSettings,connect:showConnect,about:showAbout,'close-dialog':closeDialog,deselect,
  'toggle-detail':()=>$('.workspace').classList.toggle('detail-open'),'3d':()=>openScene('chase'),map:closeScene,
@@ -320,7 +506,7 @@ const actions={
   if(/^[A-Z]{3}\d/.test(cs)){const item=collection.flight(cs);if(item){collection.removeFlight(cs);toast(`${item.label} removed from Saved.`);}else{const it=collection.addFlight(f);toast(`${it.label} saved. Tap Alerts to be notified about it.`);watcher.check();}}
   else{if(collection.aircraft(f.id)){collection.removeAircraft(f.id);toast('Removed from Saved.');}else{collection.addAircraft(f);toast((f.registration||f.callsign)+' saved.');}}
   renderDetail();},
- 'notify-flight'(){const f=selected();if(f)toggleAlerts(f.flight||f.callsign,f);},
+ 'notify-flight'(){const f=selected();if(f)showAlerts(f.flight||f.callsign,f);},
  'save-aircraft'(){const f=selected();if(!f)return;if(collection.aircraft(f.id)){collection.removeAircraft(f.id);toast('Aircraft removed from Saved.');}else{collection.addAircraft(f);toast((f.registration||'Aircraft')+' saved.');}renderDetail();},
  'save-airport'(){const a=state.airport;if(!a)return;if(collection.airport(a.icao)){collection.removeAirport(a.icao);toast(a.name+' removed from Saved.');}else{collection.addAirport(a);toast(a.name+' saved.');}renderDetail();},
  'ask-notifications'(){notificationPermission(true).then(()=>showSettings());},
@@ -341,7 +527,13 @@ document.addEventListener('click',ev=>{
  else if(ds.example){$('#search').value=ds.example;$('#search').focus();onSearchInput();}
  else if(ds.savedFlight){const item=collection.flight(ds.savedFlight);closeSearch();findAndGo('callsign',ds.savedFlight,item?.label||ds.savedFlight);}
  else if(ds.savedAircraft){const item=collection.aircraft(ds.savedAircraft);findAndGo('hex',ds.savedAircraft,item?.label||ds.savedAircraft);}
- else if(ds.bell)toggleAlerts(ds.bell);
+ else if(ds.bell)showAlerts(ds.bell);
+ else if(ds.alertMode&&state.form?.kind==='alerts')setAlertMode(state.form.callsign,ds.alertMode,state.form.flight);
+ else if(ds.openTrip)openTrip(ds.openTrip);
+ else if(ds.tripFlight)tripFlightTap(ds.tripFlight);
+ else if(ds.removeTripFlight){collection.removeTripFlight(state.trip,ds.removeTripFlight);renderDetail();updatePlan(false);syncWatch();}
+ else if(ds.removeHistory){collection.removeHistory(ds.removeHistory);renderDetail();updatePlan(false);}
+ else if(ds.historyRange){state.historyRange=ds.historyRange;renderDetail();updatePlan(true);}
  else if(ds.removeFlight){collection.removeFlight(ds.removeFlight);renderDetail();}
  else if(ds.removeAircraft){collection.removeAircraft(ds.removeAircraft);renderDetail();}
  else if(ds.removeAirport){collection.removeAirport(ds.removeAirport);renderDetail();}
@@ -350,7 +542,11 @@ document.addEventListener('click',ev=>{
  else if(ds.style){state.mapStyle=ds.style;savePref('mapStyle',state.mapStyle);map.setStyle(state.mapStyle);document.querySelectorAll('[data-style]').forEach(x=>x.classList.toggle('active',x===b));}
  else if(ds.metric){const d=definitions[ds.metric];if(d)openDialog(d[0],`<p>${d[1]}</p><button class="primary" data-action="close-dialog">OK</button>`);}
 });
+document.addEventListener('submit',ev=>{ev.preventDefault();submitForm(ev.target);});
+document.addEventListener('input',ev=>{if(ev.target.id==='ff-flight')lookupFormRoute();else if(ev.target.id==='ff-from'||ev.target.id==='ff-to')delete ev.target.dataset.auto;});
 document.addEventListener('change',ev=>{const t=ev.target,k=t.dataset.setting;
+ if(t.dataset.tripSetting){collection.updateTrip(state.trip,{[t.dataset.tripSetting]:t.checked});syncWatch();return;}
+ if(t.name==='att-trip'){const n=$('#att-new');if(n)n.hidden=t.value!=='new';return;}
  if(k==='globe'){state.projection=t.checked?'globe':'mercator';savePref('projection',state.projection);map.setProjection(state.projection);}
  else if(k==='showGround'){state.showGround=t.checked;savePref('showGround',t.checked);pushMap(true);}
  else if(k==='location'){if(t.checked)locateMe(true);else{savePref('location',false);state.me=null;map.setMe(null);}}
@@ -361,7 +557,7 @@ $('#search').addEventListener('input',onSearchInput);
 $('#search').addEventListener('focus',()=>{if(!state.search.q)renderSearch();});
 $('#search').addEventListener('keydown',ev=>{if(ev.key==='Escape'){closeSearch();$('#search').blur();}if(ev.key==='Enter'){ev.preventDefault();$('#search-results button:not(.result-back)')?.click();}if(ev.key==='ArrowDown'){ev.preventDefault();$('#search-results button')?.focus();}});
 document.addEventListener('keydown',ev=>{if(['INPUT','TEXTAREA','SELECT'].includes(ev.target.tagName))return;if(ev.key==='/'&&!$('#dialog').open){ev.preventDefault();$('#search').focus();}if(ev.key==='Escape'&&!$('#dialog').open){if(state.view3d)closeScene();else if(state.selected)deselect();$('.workspace').classList.remove('detail-open');}});
-document.addEventListener('visibilitychange',()=>{pageVisible=!document.hidden;lastFrame=performance.now();live.setPaused(document.hidden);if(document.hidden)syncWatch();else{if(backgroundChecks())watcher.quietNext();watcher.check();if(loadPref('location',false))locateMe(false,true);}});
+document.addEventListener('visibilitychange',()=>{pageVisible=!document.hidden;lastFrame=performance.now();live.setPaused(document.hidden);if(document.hidden)syncWatch();else{if(state.mode==='live')watcher.check();if(loadPref('location',false))locateMe(false,true);}});
 
 function animate(t){
  const dt=lastFrame?Math.min((t-lastFrame)/1000,.1):0;lastFrame=t;
@@ -373,9 +569,9 @@ function animate(t){
   if(t-lastUI>500){lastUI=t;renderSource();
    if(f){if(state.nav==='explore'&&state.tab==='overview'){for(const [key,kind] of [['altitude','alt'],['groundSpeed','speed'],['verticalRate','vertical'],['track','°']]){const el=$(`[data-value="${key}"]`);if(el)el.innerHTML=fmt(f[key],kind,kind==='vertical'&&state.units==='metric'?1:0)+`<small>${unit(kind)}</small>`;}const n=$('[data-note="verticalRate"]');if(n)n.textContent=vsNote(f.verticalRate);if($('#flight-phase'))$('#flight-phase').textContent=phase(f);}
     if($('#detail-data-status'))$('#detail-data-status').textContent=f.simulated?'Demo traffic':ago(quality(f).age);
-    if(state.view3d){const alt=map.lastAltitude;$('#scene-source').textContent=f.simulated?'DEMO':quality(f).status==='Recent'?'LIVE':quality(f).status.toUpperCase();if(alt?.metres!=null)$('#scene-fidelity').textContent=`${fmt(alt.metres/FT,'alt')} ${unit('alt')} above sea level`;}}
+    if(state.view3d){const alt=map.lastAltitude;$('#scene-sub').textContent=[f.simulated?'Demo':quality(f).status==='Recent'?'Live':quality(f).status,alt?.metres!=null?`${fmt(alt.metres/FT,'alt')} ${unit('alt')} above sea level`:null].filter(Boolean).join(' · ');}}
    else if(state.selected&&state.mode==='live'&&!live.get(state.selected)){toast('That plane is out of coverage now.');deselect();}}
-  if(t-lastSlow>3000){lastSlow=t;if(f){updateRoute();if(state.nav==='explore'&&state.tab==='overview'&&$('#altitude-chart'))$('#altitude-chart').innerHTML=chart(f);}if(state.nav==='airports'&&state.airport)renderDetail();}
+  if(t-lastSlow>3000){lastSlow=t;if(state.mapFilter&&state.nav==='trips')live.setTracked(currentFlights().filter(x=>state.mapFilter.has(x.flight||x.callsign)).map(x=>x.id));if(f){updateRoute();if(state.nav==='explore'&&state.tab==='overview'&&$('#altitude-chart'))$('#altitude-chart').innerHTML=chart(f);}if(state.nav==='airports'&&state.airport)renderDetail();}
  }
  requestAnimationFrame(animate);
 }
@@ -389,6 +585,22 @@ if(loadPref('location',false))locateMe(false,true);
 else if(selfTest&&bridge())locateMe(true,true);// simulator test: exercise the native location path without a tap
 else if(!loadPref('locationAsked',false)&&map.ok)setTimeout(()=>{if(!$('#dialog').open)showLocationPrompt();},900);
 // Read by the iOS/Android/browser smoke tests.
-window.__aerisSelfTest=()=>{const s=live.status();return {hidden:document.hidden,running:live.running,circles:live.circles.length,loaded:true,bridge:bridge(),mode:state.mode,map:map.ok,style:map.styleName,aircraft:state.mode==='live'?s.aircraft:state.flights.length,onMap:map.flightsData?.features?.length??0,source:$('#source-text')?.textContent,providers:s.providers.map(p=>({id:p.id,state:p.state,ms:p.ms,aircraft:p.aircraft,error:p.error})),selected:state.selected,view3d:state.view3d,saved:collection.count,me:Boolean(state.me),device:Boolean(window.webkit?.messageHandlers?.aerisDevice||window.AerisNative?.device)};};
-window.__aeris={state,live,map,collection,watcher,selectFlight,openScene,closeScene,setCamera,deselect,goTo};
+window.__aerisSelfTest=()=>{const s=live.status();return {hidden:document.hidden,running:live.running,circles:live.circles.length,loaded:true,bridge:bridge(),mode:state.mode,map:map.ok,style:map.styleName,aircraft:state.mode==='live'?s.aircraft:state.flights.length,onMap:map.flightsData?.features?.length??0,source:$('#source-text')?.textContent,providers:s.providers.map(p=>({id:p.id,state:p.state,ms:p.ms,aircraft:p.aircraft,error:p.error})),selected:state.selected,view3d:state.view3d,saved:collection.count,me:Boolean(state.me),device:Boolean(window.webkit?.messageHandlers?.aerisDevice||window.AerisNative?.device),deviceTest:window.__aerisDeviceTest||null};};
+// Simulator test: turn alerts on for a live flight the way the Alerts button does, add it to a trip,
+// and check the app's background-check bridge answers. The CI step checks the app is still running after.
+if(selfTest&&bridge())setTimeout(async()=>{const r={step:'start'};window.__aerisDeviceTest=r;
+ const within=(p,ms)=>Promise.race([p,new Promise((_,no)=>setTimeout(()=>no(new Error('timeout')),ms))]);
+ try{
+  const f=live.list().find(x=>/^[A-Z]{3}\d/.test(x.flight||x.callsign)&&!x.onGround);r.flight=f?.callsign||null;
+  r.step='permission';r.permission=await within(notificationPermission(true),8000).catch(err=>err.message);
+  if(f){r.step='alerts';r.alertsOn=await within(setAlertMode(f.flight||f.callsign,'every',f),15000).catch(err=>err.message);}
+  r.step='trip';const t=collection.addTrip('Self-test');collection.addTripFlight(t.id,{callsign:f?.callsign||'SIA22',date:localDate(now())});
+  r.step='check';await within(watcher.check(),60000).catch(()=>{});
+  r.step='sync';lastSync='';syncWatch();await new Promise(res=>setTimeout(res,1000));
+  r.step='state';const st=await within(nativeCall('watchState'),8000);r.watched=Array.isArray(st)?st.length:st;r.withState=Array.isArray(st)?st.filter(x=>x.state?.t).length:0;
+  r.step='background';r.background=await within(nativeCall('runChecks'),90000).catch(err=>err.message);
+  r.step='notify';r.notify=await within(notify('Aeris','Test alert from the simulator check.','selftest'),8000).then(()=>'ok',err=>err.message);
+  r.step='done';
+ }catch(err){r.error=err.message;}},12000);
+window.__aeris={state,live,map,collection,watcher,selectFlight,openScene,closeScene,setCamera,deselect,goTo,openTrip,setAlertMode};
 if('serviceWorker' in navigator&&['http:','https:'].includes(location.protocol)&&location.hostname!=='appassets.androidplatform.net'&&location.hostname!=='localhost'&&location.hostname!=='127.0.0.1')navigator.serviceWorker.register('./sw.js').catch(()=>{});

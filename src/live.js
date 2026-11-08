@@ -41,6 +41,8 @@ export class LiveFeed{
  setFocus(id){this.focus=id;}
  /** In the 3D view only the followed aircraft is refreshed: far fewer requests. */
  setFocusOnly(on){this.focusOnly=on;}
+ /** Aircraft to keep fresh wherever they are (the flights of an open trip), by address. */
+ setTracked(ids){this.tracked=new Set(ids||[]);}
  /** Seconds between refreshes wanted for the i-th circle (nearest the centre first). */
  interval(i){return i<1?1:i<3?2.5:i<8?5:10;}
  loop(){
@@ -69,6 +71,9 @@ export class LiveFeed{
    const st=this.circleState.get('focus')||{last:0,busy:false};this.circleState.set('focus',st);
    if((!covered||this.focusOnly)&&!st.busy&&now-st.last>=1.5)return {kind:'hex',id:this.focus,state:st};}
   if(this.focusOnly)return null;
+  for(const id of this.tracked||[]){if(id===this.focus)continue;const f=this.flights.get(id);const covered=f&&this.circles.some((c,i)=>i<3&&distance([c.lat,c.lon],[f.lat,f.lon])<c.nm*1852*.95);
+   const key='t:'+id,st=this.circleState.get(key)||{last:0,busy:false};this.circleState.set(key,st);
+   if(!covered&&!st.busy&&now-st.last>=5)return {kind:'hex',id,state:st};}
   let best=null,score=-Infinity;
   this.circles.forEach((c,i)=>{const st=this.circleState.get(c.key);if(!st||st.busy)return;const overdue=now-st.last-this.interval(i);if(overdue>=0&&overdue>score){score=overdue;best={kind:'area',circle:c,state:st};}});
   return best;
@@ -134,7 +139,7 @@ export class LiveFeed{
  }
  prune(){
   const now=this.now();
-  for(const [id,f] of this.flights){const age=now-f.positionTime;if(age>LIMITS.lost*(id===this.focus?5:1)){this.flights.delete(id);this.offsets.delete(id);if(id!==this.focus)this.tracks.delete(id);}}
+  for(const [id,f] of this.flights){const age=now-f.positionTime;if(age>LIMITS.lost*(id===this.focus||this.tracked?.has(id)?5:1)){this.flights.delete(id);this.offsets.delete(id);if(id!==this.focus)this.tracks.delete(id);}}
   for(const [id,t] of this.tracks){if(!this.flights.has(id)&&id!==this.focus&&(!t.length||now-t.at(-1).positionTime>1800))this.tracks.delete(id);}
  }
  list(){return [...this.flights.values()];}
