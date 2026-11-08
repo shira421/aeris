@@ -37,6 +37,24 @@ jobs:
           path: dist
           retention-days: 7
 
+  browser:
+    needs: web
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Browser test (headless Chrome, mocked feeds, desktop and iPhone sizes)
+        run: npm run test:browser
+      - name: Live services check (real providers, tiles, routes and 3D terrain)
+        continue-on-error: true
+        run: npm run test:live
+
   android:
     needs: web
     runs-on: ubuntu-latest
@@ -115,11 +133,12 @@ jobs:
           xcrun simctl bootstatus "$DEVICE" -b
           xcrun simctl install "$DEVICE" simbuild/Build/Products/Release-iphonesimulator/Aeris.app
           xcrun simctl launch --console-pty "$DEVICE" com.shira421.aeris -AerisSelfTest > ../selftest.log 2>&1 &
-          sleep 50
+          sleep 60
           xcrun simctl io "$DEVICE" screenshot ../ios-simulator.png || true
           xcrun simctl terminate "$DEVICE" com.shira421.aeris || true
           cat ../selftest.log
-          grep -q 'AERIS_SELFTEST.*"loaded":true' ../selftest.log
+          sips -Z 700 ../ios-simulator.png --out ../ios-small.png >/dev/null && sips -s format jpeg -s formatOptions 50 ../ios-small.png --out ../ios-small.jpg >/dev/null && echo "QA_SHOT ios-simulator $(base64 -i ../ios-small.jpg | tr -d '\n')" || true
+          grep -q 'AERIS_SELFTEST.*"loaded":true.*"map":true' ../selftest.log
 
       - name: Signed iPhone app (only when Apple signing secrets are configured)
         if: env.IOS_CERTIFICATE_P12 != '' && env.IOS_PROVISIONING_PROFILE != ''
@@ -168,7 +187,7 @@ jobs:
           retention-days: 14
 
   publish:
-    needs: [web, android, ios]
+    needs: [web, browser, android, ios]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10

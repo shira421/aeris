@@ -70,7 +70,7 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
     /// CI smoke test: prints what the app shows after start-up, so a simulator run can
     /// confirm the bundle loads and live data arrives through the native bridge.
     private func scheduleSelfTest() {
-        for delay in [8.0, 20.0, 35.0] {
+        for delay in [10.0, 25.0, 45.0, 58.0] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                 let js = "JSON.stringify(window.__aerisSelfTest ? window.__aerisSelfTest() : {loaded: !!document.querySelector('#app .topbar')})"
                 self?.webView.evaluateJavaScript(js) { result, error in

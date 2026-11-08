@@ -3,18 +3,22 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "An original, source-transparent flight explorer with Three.js reconstruction.",
+  "description": "Live aircraft worldwide on an accurate MapLibre world map, with honest data and real-terrain 3D.",
   "scripts": {
     "start": "node server.mjs",
     "build": "node build.mjs",
     "pretest": "npm run build",
     "models": "node scripts/export-models.mjs",
-    "test": "node --test tests/core.test.mjs && node tests/ui-smoke.mjs && node tests/server-smoke.mjs",
-    "icons": "node scripts/make-icons.mjs"
+    "test": "node --test tests/core.test.mjs && node tests/server-smoke.mjs",
+    "icons": "node scripts/make-icons.mjs",
+    "test:browser": "node tests/browser.mjs",
+    "test:live": "node tests/live-smoke.mjs",
+    "data": "node scripts/build-airports.mjs && node scripts/build-geoid.mjs"
   },
   "devDependencies": {
     "@napi-rs/canvas": "0.1.100",
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "playwright-core": "1.56.1"
   },
   "dependencies": {
     "maplibre-gl": "5.24.0"
