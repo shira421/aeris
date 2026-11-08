@@ -5,7 +5,7 @@ import {makeAircraft} from './aircraft.mjs';
 import {readFileSync} from 'node:fs';
 test('static and Android installs use a provider URL instead of a nonexistent backend',()=>{
  const direct='https://api.adsb.lol/v2/point/1.36/103.99/100';
- for(const url of ['file:///tmp/Aeris.html','https://shira421.github.io/aeris/','https://appassets.androidplatform.net/assets/index.html'])assert.equal(defaultFeedEndpoint(new URL(url)),direct);
+ for(const url of ['file:///tmp/Aeris.html','aeris://app/index.html','https://shira421.github.io/aeris/','https://appassets.androidplatform.net/assets/index.html'])assert.equal(defaultFeedEndpoint(new URL(url)),direct);
  assert.equal(defaultFeedEndpoint(new URL('http://localhost:4173/')),'http://localhost:4173/api/flights');
  assert.equal(defaultFeedEndpoint(new URL('https://aeris.example/')),'https://aeris.example/api/flights');
 });

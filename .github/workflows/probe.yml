@@ -1,0 +1,24 @@
+name: Probe data providers
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+  push:
+    branches: ['claude/**']
+    paths: ['scripts/probe-providers.mjs', '.github/workflows/probe.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check each provider's reachability, latency, CORS and schema
+        run: node scripts/probe-providers.mjs

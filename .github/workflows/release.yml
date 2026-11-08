@@ -1,0 +1,209 @@
+name: Build apps
+
+# Every push builds and tests the web app, the Android APK and the iOS app.
+# Pushes to main also publish: a rolling "latest-build" release (stable download links)
+# and, once per version in package.json, an immutable v<version> release.
+on:
+  push:
+    branches: [main, 'claude/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: dist
+          retention-days: 7
+
+  android:
+    needs: web
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: dist
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Build Android APK
+        working-directory: android
+        run: gradle :app:assembleDebug
+      - run: cp android/app/build/outputs/apk/debug/app-debug.apk Aeris-Android.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: Aeris-Android.apk
+          retention-days: 14
+
+  ios:
+    needs: web
+    runs-on: macos-15
+    timeout-minutes: 40
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      IOS_CERTIFICATE_P12: ${{ secrets.IOS_CERTIFICATE_P12 }}
+      IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+      IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+      IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+      IOS_EXPORT_METHOD: ${{ secrets.IOS_EXPORT_METHOD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: dist
+      - name: Generate the Xcode project
+        run: |
+          rm -rf ios/web && cp -R dist ios/web
+          rm -f ios/web/Aeris.html
+          brew install xcodegen
+          cd ios && xcodegen generate
+          xcodebuild -version
+
+      - name: Build unsigned iPhone app (for AltStore / SideStore / Sideloadly)
+        run: |
+          set -o pipefail
+          cd ios
+          xcodebuild -project Aeris.xcodeproj -scheme Aeris -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | tail -40
+          rm -rf Payload && mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/Aeris.app Payload/
+          zip -qry ../Aeris-iOS-unsigned.ipa Payload
+          ls -la ../Aeris-iOS-unsigned.ipa
+
+      - name: Simulator smoke test (app launches, web app loads, live data arrives natively)
+        run: |
+          set -o pipefail
+          cd ios
+          xcodebuild -project Aeris.xcodeproj -scheme Aeris -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath simbuild \
+            CODE_SIGNING_ALLOWED=NO build | tail -5
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print(next(x['udid'] for r,l in sorted(d.items(),reverse=True) if 'iOS' in r for x in l if x['name'].startswith('iPhone')))")
+          echo "Simulator $DEVICE"
+          xcrun simctl boot "$DEVICE" || true
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl install "$DEVICE" simbuild/Build/Products/Release-iphonesimulator/Aeris.app
+          xcrun simctl launch --console-pty "$DEVICE" com.shira421.aeris -AerisSelfTest > ../selftest.log 2>&1 &
+          sleep 50
+          xcrun simctl io "$DEVICE" screenshot ../ios-simulator.png || true
+          xcrun simctl terminate "$DEVICE" com.shira421.aeris || true
+          cat ../selftest.log
+          grep -q 'AERIS_SELFTEST.*"loaded":true' ../selftest.log
+
+      - name: Signed iPhone app (only when Apple signing secrets are configured)
+        if: env.IOS_CERTIFICATE_P12 != '' && env.IOS_PROVISIONING_PROFILE != ''
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"; KPASS="$(uuidgen)"
+          echo "$IOS_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          echo "$IOS_PROVISIONING_PROFILE" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
+          security create-keychain -p "$KPASS" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KPASS" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -P "$IOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KPASS" "$KEYCHAIN" >/dev/null
+          security list-keychain -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" > "$RUNNER_TEMP/profile.plist"
+          UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' "$RUNNER_TEMP/profile.plist")
+          TEAM=${IOS_TEAM_ID:-$(/usr/libexec/PlistBuddy -c 'Print TeamIdentifier:0' "$RUNNER_TEMP/profile.plist")}
+          APPID=$(/usr/libexec/PlistBuddy -c 'Print Entitlements:application-identifier' "$RUNNER_TEMP/profile.plist")
+          BUNDLE="${APPID#*.}"; [ "$BUNDLE" = "*" ] && BUNDLE=com.shira421.aeris
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$RUNNER_TEMP/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$UUID.mobileprovision"
+          METHOD=${IOS_EXPORT_METHOD:-development}
+          IDENTITY="Apple Development"; [ "$METHOD" != "development" ] && IDENTITY="Apple Distribution"
+          cd ios
+          xcodebuild archive -project Aeris.xcodeproj -scheme Aeris -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Aeris.xcarchive" \
+            DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$IDENTITY" \
+            PROVISIONING_PROFILE_SPECIFIER="$UUID" PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE" | tail -20
+          printf '%s' "<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\"><plist version=\"1.0\"><dict><key>method</key><string>$METHOD</string><key>teamID</key><string>$TEAM</string><key>signingStyle</key><string>manual</string><key>provisioningProfiles</key><dict><key>$BUNDLE</key><string>$UUID</string></dict><key>compileBitcode</key><false/></dict></plist>" > "$RUNNER_TEMP/ExportOptions.plist"
+          plutil -lint "$RUNNER_TEMP/ExportOptions.plist"
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Aeris.xcarchive" -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+          cp "$RUNNER_TEMP"/export/*.ipa ../Aeris-iOS-signed.ipa
+          security delete-keychain "$KEYCHAIN" || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-app
+          path: |
+            Aeris-iOS-unsigned.ipa
+            Aeris-iOS-signed.ipa
+            ios-simulator.png
+            selftest.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  publish:
+    needs: [web, android, ios]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.web.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Package downloads
+        run: |
+          mkdir -p out
+          cp artifacts/Aeris-Android.apk artifacts/Aeris-iOS-unsigned.ipa out/
+          [ -f artifacts/Aeris-iOS-signed.ipa ] && cp artifacts/Aeris-iOS-signed.ipa out/ || true
+          (cd artifacts && zip -qr ../out/Aeris-WebApp.zip . -x '*.apk' '*.ipa' '*.png' '*.log')
+          SIZE=$(stat -c %s out/Aeris-iOS-unsigned.ipa)
+          node -e "
+            const fs=require('fs');const v=process.env.VERSION;
+            fs.writeFileSync('out/altstore-source.json',JSON.stringify({name:'Aeris',identifier:'com.shira421.aeris.source',subtitle:'Live flights on an accurate world map',iconURL:'https://shira421.github.io/aeris/icons/icon-512.png',website:'https://github.com/shira421/aeris',apps:[{name:'Aeris',bundleIdentifier:'com.shira421.aeris',developerName:'shira421',subtitle:'A closer look at flight',localizedDescription:'Live aircraft worldwide from community ADS-B networks, on an accurate OpenStreetMap world map with globe and 3D views.',iconURL:'https://shira421.github.io/aeris/icons/icon-512.png',tintColor:'#d96f49',versions:[{version:v,buildVersion:process.env.GITHUB_RUN_NUMBER,date:new Date().toISOString(),localizedDescription:'Build '+process.env.GITHUB_SHA.slice(0,7),downloadURL:'https://github.com/shira421/aeris/releases/download/latest-build/Aeris-iOS-unsigned.ipa',size:Number(process.argv[1]),minOSVersion:'15.0'}],appPermissions:{entitlements:[],privacy:{NSLocationWhenInUseUsageDescription:'Centres the map near you when you tap Locate.'}}}],news:[]},null,2));
+          " "$SIZE"
+          (cd out && sha256sum * > SHA256SUMS.txt)
+          ls -la out
+      - name: Update the rolling latest-build release
+        run: |
+          gh release delete latest-build --yes --cleanup-tag 2>/dev/null || true
+          gh release create latest-build out/* --target "$GITHUB_SHA" --prerelease \
+            --title "Aeris latest build (${GITHUB_SHA::7})" --notes-file .github/release-notes.md
+      - name: Create the v${{ env.VERSION }} release once
+        run: |
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "v$VERSION already published; its files stay unchanged. latest-build has this commit."
+          else
+            gh release create "v$VERSION" out/* --target "$GITHUB_SHA" --latest \
+              --title "Aeris v$VERSION" --notes-file .github/release-notes.md
+          fi

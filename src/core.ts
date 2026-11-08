@@ -45,7 +45,7 @@ export function flightPathAngle(f:Flight) {return f.groundSpeed!==null&&f.ground
 export function parseEndpoint(url:string) {const u=new URL(url);if(!['http:','https:'].includes(u.protocol))throw new Error('Use an HTTP or HTTPS endpoint.');if(u.username||u.password||u.hash)throw new Error('Do not embed credentials or fragments in the URL.');return u.href;}
 export function defaultFeedEndpoint(page:{protocol:string,hostname?:string,origin:string}) {
  const host=page.hostname||'';
- const staticHost=page.protocol==='file:'||host==='appassets.androidplatform.net'||host.endsWith('.github.io');
+ const staticHost=!['http:','https:'].includes(page.protocol)||host==='appassets.androidplatform.net'||host.endsWith('.github.io');
  return staticHost?'https://api.adsb.lol/v2/point/1.36/103.99/100':page.origin+'/api/flights';
 }
 export function topoFeatures(t:any) {

@@ -16,7 +16,7 @@ await copyFile(root+'src/style.css',root+'dist/style.css');
 let html=await readFile(root+'index.html','utf8');
 await writeFile(root+'dist/index.html',html.replace('./src/style.css','./style.css').replace('type="module" src="./src/app.js"','defer src="./app.js"'));
 const js=await readFile(root+'dist/app.js','utf8'),css=await readFile(root+'src/style.css','utf8');
-await mkdir(root+'dist/icons',{recursive:true});await copyFile(root+'public/manifest.webmanifest',root+'dist/manifest.webmanifest');for(const n of [192,512])await copyFile(root+'public/icon-'+n+'.png',root+'dist/icons/icon-'+n+'.png');const sw=await readFile(root+'public/sw.js','utf8');await writeFile(root+'dist/sw.js',sw.replace('SOURCE_VERSION',createHash('sha256').update(js+css).digest('hex').slice(0,12)));
+await mkdir(root+'dist/icons',{recursive:true});await copyFile(root+'public/manifest.webmanifest',root+'dist/manifest.webmanifest');for(const n of ['180','192','512','maskable-512'])await copyFile(root+'public/icon-'+n+'.png',root+'dist/icons/icon-'+n+'.png');const sw=await readFile(root+'public/sw.js','utf8');await writeFile(root+'dist/sw.js',sw.replace('SOURCE_VERSION',createHash('sha256').update(js+css).digest('hex').slice(0,12)));
 const portable=html.replace(/<link rel="manifest"[^>]+>/,'').replace(/<link rel="apple-touch-icon"[^>]+>/,'').replace('<link rel="stylesheet" href="./src/style.css">',`<style>${css}</style>`).replace('<script type="module" src="./src/app.js"></script>',`<script>${js.replace(/<\/script/gi,'<\\/script')}</script>`);
 await writeFile(root+'dist/Aeris.html',portable);
 console.log('Built dist/index.html and self-contained dist/Aeris.html');

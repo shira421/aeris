@@ -1,6 +1,22 @@
 {
-  "name": "aeris-flight-explorer", "version": "0.1.0", "private": true, "type": "module",
+  "name": "aeris-flight-explorer",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
   "description": "An original, source-transparent flight explorer with Three.js reconstruction.",
-  "scripts": {"start":"node server.mjs", "build":"node build.mjs", "pretest":"npm run build", "models":"node scripts/export-models.mjs", "test":"node --test tests/core.test.mjs && node tests/ui-smoke.mjs && node tests/server-smoke.mjs"},
-  "devDependencies": {"esbuild":"0.28.2", "@napi-rs/canvas":"0.1.100"}
+  "scripts": {
+    "start": "node server.mjs",
+    "build": "node build.mjs",
+    "pretest": "npm run build",
+    "models": "node scripts/export-models.mjs",
+    "test": "node --test tests/core.test.mjs && node tests/ui-smoke.mjs && node tests/server-smoke.mjs",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "devDependencies": {
+    "@napi-rs/canvas": "0.1.100",
+    "esbuild": "0.28.2"
+  },
+  "dependencies": {
+    "maplibre-gl": "5.24.0"
+  }
 }

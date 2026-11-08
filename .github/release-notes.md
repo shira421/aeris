@@ -1,19 +1,21 @@
-Aeris is an original flight explorer preview with an offline Singapore scenario, Three.js aircraft cameras, and optional live ADS-B integration.
-
-## Android
-
-Download **Aeris-Android-v0.1.0.apk** on Android 8 or later and open it. Allow installation from the browser or Files app when Android requests it. The offline demo is bundled. A current Android System WebView with WebGL support is required.
-
-This is a development-signed testing APK. Each CI build uses a temporary development key. Uninstall a previous preview before installing a differently signed build. Existing release files are not overwritten. Production signing and physical-device testing are still pending.
+Aeris shows live aircraft from community ADS-B networks on an accurate world map, with a 3D view of the selected flight.
 
 ## iPhone and iPad
 
-Once Pages is enabled, open [Aeris](https://shira421.github.io/aeris/) in Safari, then choose **Share → Add to Home Screen**. The included **Aeris-iOS-WebApp-v0.1.0.zip** contains the web-app files for HTTPS hosting; opening that ZIP does not install an iPhone app. No signed IPA, TestFlight or App Store distribution is included.
+Two ways to install:
+
+1. **Home Screen web app (no tools needed).** Open [shira421.github.io/aeris](https://shira421.github.io/aeris/) in Safari, tap **Share → Add to Home Screen**, then open Aeris from the Home Screen. It runs full screen.
+2. **Native app (sideload).** Download **Aeris-iOS-unsigned.ipa** and install it with [SideStore](https://sidestore.io), [AltStore](https://altstore.io) or [Sideloadly](https://sideloadly.io) using your Apple ID. With a free Apple ID the app must be refreshed every 7 days. In AltStore or SideStore you can add this source for updates: `https://github.com/shira421/aeris/releases/download/latest-build/altstore-source.json`. The native app fetches flight data directly, so it can use more data providers than the web app.
+
+If **Aeris-iOS-signed.ipa** is present, it was signed with the repository owner's Apple certificate and installs on the devices in that provisioning profile.
+
+## Android
+
+Download **Aeris-Android.apk** on Android 8 or later and open it. Allow installation from your browser or Files app when asked. Each CI build uses a temporary development key, so uninstall an older build if Android refuses to update it.
 
 ## What to expect
 
-- Default data and flight scenarios are synthetic; the 3D scene is schematic.
-- Optional live traffic depends on provider availability, coverage and browser access. Photoreal terrain requires a provider token and is unverified.
-- Automated core, DOM and server checks run before packaging. Physical Android/iOS and browser GPU testing remain outstanding.
-- CSV export is supported in browsers; Android WebView download handling has not been validated.
-- SHA256SUMS.txt contains checksums for both downloads.
+- Live positions come from community ADS-B networks (adsb.lol, airplanes.live, adsb.fi, OpenSky). Coverage depends on their volunteer receivers, and each service's terms apply.
+- Routes and airframe details come from public databases and can be wrong or out of date. Aeris checks a route against the aircraft's position and says when it does not fit.
+- The 3D aircraft are original models built from each type's published dimensions, not exact airframes or liveries.
+- `SHA256SUMS.txt` lists checksums for every download.

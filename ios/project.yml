@@ -1,0 +1,57 @@
+# XcodeGen spec for the Aeris iOS app. CI runs `xcodegen generate` after copying
+# the built web app into ios/web (see .github/workflows/release.yml).
+name: Aeris
+options:
+  bundleIdPrefix: com.shira421
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    MARKETING_VERSION: "0.2.0"
+    CURRENT_PROJECT_VERSION: "2"
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+targets:
+  Aeris:
+    type: application
+    platform: iOS
+    sources:
+      - path: Aeris
+      - path: web
+        type: folder
+        buildPhase: resources
+    info:
+      path: Aeris/Info.plist
+      properties:
+        CFBundleDisplayName: Aeris
+        CFBundleName: Aeris
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        ITSAppUsesNonExemptEncryption: false
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIStatusBarStyle: UIStatusBarStyleDarkContent
+        UIViewControllerBasedStatusBarAppearance: true
+        UIRequiresFullScreen: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSLocationWhenInUseUsageDescription: Aeris uses your location only when you tap Locate, to centre the map on aircraft near you.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.shira421.aeris
+        PRODUCT_NAME: Aeris
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_BITCODE: NO
+    scheme: {}

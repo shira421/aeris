@@ -5,3 +5,10 @@ tests/aircraft.mjs
 .env
 .env.*
 tests/scenarios.mjs
+ios/web/
+ios/build/
+ios/simbuild/
+ios/Payload/
+ios/*.xcodeproj/
+*.ipa
+*.apk

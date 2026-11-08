@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -12,9 +13,74 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import androidx.webkit.WebViewAssetLoader;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import org.json.JSONObject;
 
 public final class MainActivity extends Activity {
     private WebView webView;
+    private final ExecutorService network = Executors.newFixedThreadPool(4);
+
+    /** Native HTTPS for flight data: public ADS-B endpoints often block browser (CORS) requests. */
+    private final class NetBridge {
+        private final Set<String> allowedHosts = new HashSet<>(Arrays.asList(
+            "api.adsb.lol", "api.airplanes.live", "opendata.adsb.fi", "opensky-network.org",
+            "api.adsbdb.com", "api.planespotters.net", "hexdb.io"));
+        private static final int MAX_BYTES = 12 * 1024 * 1024;
+
+        @JavascriptInterface
+        public void request(final String id, final String url, final int timeoutMs) {
+            network.execute(() -> {
+                long started = System.nanoTime();
+                JSONObject reply = new JSONObject();
+                HttpURLConnection connection = null;
+                try {
+                    URL target = new URL(url);
+                    if (!"https".equals(target.getProtocol()) || !allowedHosts.contains(target.getHost())) {
+                        throw new IllegalArgumentException("Request refused: only HTTPS flight-data hosts are allowed.");
+                    }
+                    connection = (HttpURLConnection) target.openConnection();
+                    int timeout = Math.max(1000, Math.min(timeoutMs, 20000));
+                    connection.setConnectTimeout(timeout);
+                    connection.setReadTimeout(timeout);
+                    connection.setUseCaches(false);
+                    connection.setRequestProperty("Accept", "application/json");
+                    connection.setRequestProperty("User-Agent", "Aeris/" + BuildConfig.VERSION_NAME + " (Android; +https://github.com/shira421/aeris)");
+                    int status = connection.getResponseCode();
+                    InputStream in = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
+                    ByteArrayOutputStream out = new ByteArrayOutputStream();
+                    if (in != null) {
+                        byte[] buffer = new byte[16384];
+                        int n;
+                        while ((n = in.read(buffer)) != -1) {
+                            out.write(buffer, 0, n);
+                            if (out.size() > MAX_BYTES) throw new IllegalStateException("Response too large");
+                        }
+                        in.close();
+                    }
+                    reply.put("status", status);
+                    reply.put("body", new String(out.toByteArray(), StandardCharsets.UTF_8));
+                    String date = connection.getHeaderField("Date");
+                    reply.put("date", date == null ? "" : date);
+                    reply.put("ms", (System.nanoTime() - started) / 1e6);
+                } catch (Exception error) {
+                    try { reply.put("error", String.valueOf(error.getMessage())); } catch (Exception ignored) { }
+                } finally {
+                    if (connection != null) connection.disconnect();
+                }
+                final String script = "window.__aerisNetReply&&window.__aerisNetReply(" + JSONObject.quote(id) + "," + reply + ")";
+                webView.post(() -> { if (webView != null) webView.evaluateJavascript(script, null); });
+            });
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -28,6 +94,7 @@ public final class MainActivity extends Activity {
         settings.setAllowContentAccess(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setMediaPlaybackRequiresUserGesture(true);
+        webView.addJavascriptInterface(new NetBridge(), "AerisNative");
         final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
             .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
             .build();
@@ -71,6 +138,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        network.shutdownNow();
         if (webView != null) {
             webView.destroy();
             webView = null;
@@ -78,4 +146,3 @@ public final class MainActivity extends Activity {
         super.onDestroy();
     }
 }
-

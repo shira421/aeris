@@ -7,3 +7,20 @@
 
 @media(max-width:480px){.tool-group button{width:42px;height:42px}.chip{height:36px}.camera-bar button{min-height:38px}.detail-tabs button{min-height:42px}}
 @media(max-width:360px){.topbar{padding:0 12px}.brand{font-size:16px;letter-spacing:1.5px}.brand svg{width:20px}.nav{gap:9px}.nav button{font-size:9px}.source-pill{font-size:6.5px;padding:6px 4px}}
+
+/* iPhone / installed-app layer: safe areas (notch, Dynamic Island, home indicator) and touch behaviour. */
+:root{--sat:env(safe-area-inset-top,0px);--sab:env(safe-area-inset-bottom,0px);--sal:env(safe-area-inset-left,0px);--sar:env(safe-area-inset-right,0px);--topbar-h:76px}
+@media(max-width:800px){:root{--topbar-h:64px}}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;background:var(--paper)}
+body{overscroll-behavior:none}
+button,a,input,select,.chip{touch-action:manipulation}
+.stage,.stage canvas{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.topbar{height:calc(var(--topbar-h) + var(--sat));padding-top:var(--sat);padding-left:max(var(--pad-x,29px),var(--sal));padding-right:max(var(--pad-x,29px),var(--sar))}
+@media(max-width:1120px){.topbar{--pad-x:20px}}
+@media(max-width:800px){.topbar{--pad-x:16px}}
+@media(max-width:360px){.topbar{--pad-x:12px}}
+.workspace{height:calc(100dvh - var(--topbar-h) - var(--sat));padding-left:var(--sal);padding-right:var(--sar)}
+.bottom-playback,.credits,.mobile-detail-toggle,.camera-bar,.map-title,.region-label,.scene-caption,.toast{margin-bottom:var(--sab)}
+.detail{padding-bottom:var(--sab)}
+dialog{max-height:calc(100dvh - 32px - var(--sat) - var(--sab))}
+@media(max-width:800px){.detail{top:calc(var(--topbar-h) + var(--sat));right:var(--sar)}}
