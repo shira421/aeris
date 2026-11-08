@@ -161,6 +161,8 @@ try{
    const start=Date.now();await page.evaluate(()=>{window.__aeris.deselect();window.__aeris.map.map.jumpTo({center:[151.21,-33.87],zoom:8});});
    await page.waitForFunction(()=>window.__aeris.map.map.queryRenderedFeatures({layers:['flights']}).some(f=>f.properties.id==='7c0001'),null,{timeout:5000});
    console.log(`new region visible in ${Date.now()-start} ms`);
+   await page.waitForFunction(()=>window.scrollX===0&&document.querySelector('.workspace').scrollLeft===0);
+   assert.equal(await page.evaluate(()=>document.querySelector('.topbar').getBoundingClientRect().left),0,'the hidden drawer must not shift the page sideways');
    await page.screenshot({path:`qa/${viewport.name}-new-region.png`});
   });
   await context.close();
