@@ -40,7 +40,7 @@ export class LiveFeed{
  interval(i){return i<1?1:i<3?2:i<8?4:8;}
  loop(){
   if(!this.running)return;
-  if(!this.paused&&!(typeof document!=='undefined'&&document.hidden))this.dispatch();
+  if(!this.paused)this.dispatch();
   this.prune();
   this.timer=setTimeout(()=>this.loop(),200);
  }

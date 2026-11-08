@@ -101,7 +101,7 @@ test('live engine alternates sources, merges answers and stays inside rate limit
  assert.equal(feed.list().length,1);const hosts=calls.map(c=>c.host);
  assert.ok(hosts.includes('api.adsb.lol')&&hosts.includes('opendata.adsb.fi'),'both sources used: '+hosts.join(','));
  assert.ok(!hosts.includes('opensky-network.org'),'OpenSky credits are not spent while faster sources work');
- for(const host of new Set(hosts)){const times=calls.filter(c=>c.host===host).map(c=>c.t);for(let i=1;i<times.length;i++)assert.ok(times[i]-times[i-1]>=.9,`${host} spaced ${times[i]-times[i-1]} s`);}
+ for(const host of new Set(hosts)){const times=calls.filter(c=>c.host===host).map(c=>c.t);for(let i=1;i<times.length;i++)assert.ok(times[i]-times[i-1]>=1,`${host} spaced ${times[i]-times[i-1]} s`);}
  const total=calls.length/(clock-start);assert.ok(total>=1&&total<=3.5,'about one area refresh per second overall: '+total.toFixed(2));
  assert.ok(feed.track('abc123').length>=1);assert.ok(feed.position('abc123').lon>104,'display position is dead-reckoned');
 });

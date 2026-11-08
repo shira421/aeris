@@ -72,7 +72,7 @@ export class WorldMap{
  }
  styleLoaded(){try{return this.map.isStyleLoaded()||Boolean(this.map.getStyle()?.layers?.length);}catch{return false;}}
  attribution(){const name=this.styleName;let a=name==='satellite'?ATTRIBUTION.satellite:name==='offline'?ATTRIBUTION.offline:ATTRIBUTION.map;if(this.mode!=='map')a+=' · '+ATTRIBUTION.terrain;return a;}
- emitMove(){if(!this.map)return;const b=this.map.getBounds();let west=b.getWest(),east=b.getEast();if(this.map.getZoom()<2.2||this.projection==='globe'&&this.map.getZoom()<2.6){west=-180;east=180;}
+ emitMove(){if(!this.map)return;const b=this.map.getBounds();if(![b.getWest(),b.getEast(),b.getSouth(),b.getNorth()].every(Number.isFinite)||b.getNorth()<=b.getSouth()){setTimeout(()=>this.emitMove(),250);return;}let west=b.getWest(),east=b.getEast();if(this.map.getZoom()<2.2||this.projection==='globe'&&this.map.getZoom()<2.6){west=-180;east=180;}
   this.onMove?.({west,east,south:b.getSouth(),north:b.getNorth()},this.map.getZoom(),this.map.getCenter());}
  setStyle(name){
   if(!this.map)return;this.styleName=name;

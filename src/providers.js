@@ -3,7 +3,7 @@
 // iOS/Android app's native bridge, the local Node server, or a configured proxy.
 const f=n=>Number(n).toFixed(3);
 export const PROVIDERS=[
- {id:'adsblol',name:'adsb.lol',kind:'readsb',cors:false,maxRadius:250,minGap:900,
+ {id:'adsblol',name:'adsb.lol',kind:'readsb',cors:false,maxRadius:250,minGap:1600,
   area:c=>`https://api.adsb.lol/v2/lat/${f(c.lat)}/lon/${f(c.lon)}/dist/${Math.round(c.nm)}`,
   hex:id=>`https://api.adsb.lol/v2/hex/${id}`,callsign:cs=>`https://api.adsb.lol/v2/callsign/${encodeURIComponent(cs)}`,reg:r=>`https://api.adsb.lol/v2/reg/${encodeURIComponent(r)}`,
   licence:'ODbL 1.0',site:'https://adsb.lol',terms:'Open data (ODbL). Best-effort community service.'},

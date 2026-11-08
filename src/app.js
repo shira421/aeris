@@ -63,6 +63,9 @@ const map=new WorldMap($('#map'),{onSelect:id=>selectFlight(id),onAirport:select
 const live=new LiveFeed({storage:(()=>{try{return localStorage;}catch{return null;}})(),onUpdate:()=>{if(state.mode==='live')updateTrail(true);},onStatus:()=>renderSource()});
 for(const id of loadPref('disabledProviders',[]))live.setEnabled(id,false);
 loadAirports().then(()=>{map.setAirports(airportsGeoJSON());renderMapTitle();if(state.nav==='airports')renderDetail();});
+// Without WebGL there is no map to report a viewport: poll a region around the last view so
+// search, lists, details and airports still work.
+if(!map.ok){const v=loadPref('view',null),c=v?.center||[103.99,1.36];onMapMove({west:c[0]-4,east:c[0]+4,south:c[1]-3,north:c[1]+3},7,{lng:c[0],lat:c[1]});}
 function onMapMove(bounds,zoom,center){state.center=center;state.zoom=zoom;live.setView(bounds,zoom);renderMapTitle();}
 
 const selected=()=>currentFlights().find(f=>f.id===state.selected)||null;
@@ -289,11 +292,12 @@ document.addEventListener('change',ev=>{const t=ev.target;
 $('#search').addEventListener('input',search);$('#search').addEventListener('keydown',ev=>{if(ev.key==='Escape')closeSearch();if(ev.key==='Enter')$('#search-results button')?.click();if(ev.key==='ArrowDown'){ev.preventDefault();$('#search-results button')?.focus();}});
 $('#timeline').addEventListener('input',ev=>{state.playing=false;if(state.mode==='demo'){state.demoTime=Number(ev.target.value);state.flights=demoFlights(state.demoTime);}else state.replayTime=Number(ev.target.value);refresh();updateTrail(true);});
 document.addEventListener('keydown',ev=>{if(['INPUT','TEXTAREA','SELECT'].includes(ev.target.tagName))return;if(ev.key==='/'&&!$('#dialog').open){ev.preventDefault();$('#search').focus();}if(ev.key===' '&&!$('#dialog').open&&ev.target.tagName!=='BUTTON'){ev.preventDefault();togglePlay();}if(ev.key==='Escape'&&!$('#dialog').open){if(state.view3d)closeScene();else if(state.selected)deselect();$('.workspace').classList.remove('detail-open');}});
-document.addEventListener('visibilitychange',()=>{lastFrame=performance.now();live.setPaused(document.hidden);});
+let pageVisible=true;// browsers stop animation frames in hidden tabs; this tracks explicit changes
+document.addEventListener('visibilitychange',()=>{pageVisible=!document.hidden;lastFrame=performance.now();live.setPaused(document.hidden);});
 
 function animate(t){
  const dt=lastFrame?Math.min((t-lastFrame)/1000,.1):0;lastFrame=t;
- if(!document.hidden){
+ if(pageVisible){
   if(state.playing){if(state.mode==='demo'){state.demoTime=Math.min(DEMO_DURATION,state.demoTime+dt*state.rate);state.flights=demoFlights(state.demoTime);if(state.demoTime>=DEMO_DURATION)state.playing=false;}
    else if(state.replayTime!==null){const end=live.track(state.selected).at(-1)?.positionTime||state.replayTime;state.replayTime=Math.min(end,state.replayTime+dt*state.rate);if(state.replayTime>=end)state.playing=false;}}
   const f=selected();
@@ -315,6 +319,6 @@ $('#map-credit').innerHTML=map.attribution?.()||'';
 refresh();renderClock();requestAnimationFrame(animate);
 if(state.mode==='demo'){loadAirports().then(()=>{if(state.selected==='demo-sq228'){state.info={route:demoRoute(state.flights[0])};infoFor='demo-sq228';renderDetail();updateRoute();}});if(!canLive())setTimeout(()=>toast('Showing the demo. Live traffic needs the Aeris app or a data proxy.'),1200);}
 // Read by the iOS/Android/browser smoke tests: a compact description of what the app shows.
-window.__aerisSelfTest=()=>{const s=live.status();return {loaded:true,bridge:bridge(),mode:state.mode,map:map.ok,style:map.styleName,aircraft:state.mode==='live'?s.aircraft:state.flights.length,onMap:map.flightsData?.features?.length??0,source:$('#source-text')?.textContent,providers:s.providers.map(p=>({id:p.id,state:p.state,ms:p.ms,aircraft:p.aircraft,error:p.error})),selected:state.selected,view3d:state.view3d};};
+window.__aerisSelfTest=()=>{const s=live.status();return {hidden:document.hidden,visibility:document.visibilityState,running:live.running,paused:live.paused,circles:live.circles.length,view:live.view,loaded:true,bridge:bridge(),mode:state.mode,map:map.ok,style:map.styleName,aircraft:state.mode==='live'?s.aircraft:state.flights.length,onMap:map.flightsData?.features?.length??0,source:$('#source-text')?.textContent,providers:s.providers.map(p=>({id:p.id,state:p.state,ms:p.ms,aircraft:p.aircraft,error:p.error})),selected:state.selected,view3d:state.view3d};};
 window.__aeris={state,live,map,selectFlight,openScene,closeScene,setCamera,useDemo,useLive,deselect};
 if('serviceWorker' in navigator&&['http:','https:'].includes(location.protocol)&&location.hostname!=='appassets.androidplatform.net'&&location.hostname!=='localhost'&&location.hostname!=='127.0.0.1')navigator.serviceWorker.register('./sw.js').catch(()=>{});

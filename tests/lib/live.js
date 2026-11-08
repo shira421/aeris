@@ -23,7 +23,7 @@ var PROVIDERS = [
     kind: "readsb",
     cors: false,
     maxRadius: 250,
-    minGap: 900,
+    minGap: 1600,
     area: (c) => `https://api.adsb.lol/v2/lat/${f(c.lat)}/lon/${f(c.lon)}/dist/${Math.round(c.nm)}`,
     hex: (id) => `https://api.adsb.lol/v2/hex/${id}`,
     callsign: (cs) => `https://api.adsb.lol/v2/callsign/${encodeURIComponent(cs)}`,
@@ -153,7 +153,7 @@ var LiveFeed = class {
   }
   loop() {
     if (!this.running) return;
-    if (!this.paused && !(typeof document !== "undefined" && document.hidden)) this.dispatch();
+    if (!this.paused) this.dispatch();
     this.prune();
     this.timer = setTimeout(() => this.loop(), 200);
   }
