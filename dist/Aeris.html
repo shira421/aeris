@@ -109,7 +109,7 @@ h3{font-size:15px;font-weight:600}
 .flight-heading h2{font-size:26px;letter-spacing:-.8px;line-height:1.15}
 .flight-heading p{margin-top:4px;font-size:13px;color:var(--muted)}
 .action-row{display:flex;gap:8px;margin-top:18px}
-.action-row>button{flex:1;display:flex;align-items:center;justify-content:center;gap:7px}
+.action-row>button{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;gap:7px}
 .action-row .icon{width:17px;height:17px}
 .primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:12px 16px;border-radius:8px;font-size:14px;background:var(--deep);color:#fff}
 .secondary{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:10px 14px;border-radius:8px;font-size:14px;color:var(--ink);background:#fff;border:1px solid #d9e4de}
@@ -313,11 +313,11 @@ dialog .modal-body>form>.form-field:first-child{margin-top:0}
 /* Phones and small tablets: the panel becomes a drawer over the map */
 @media(max-width:800px){
  :root{--pad-x:14px;--topbar-h:58px}
- .topbar{gap:8px}
+ .topbar{gap:8px;grid-template-columns:auto minmax(0,1fr) auto}
  .brand{font-size:17px;letter-spacing:2.5px;gap:7px}
  .brand svg{width:22px;height:26px}
  .brand span{display:none}
- .nav{gap:18px}
+ .nav{gap:18px;justify-self:center}
  .top-actions{gap:4px}
  .top-actions>.iconbutton{display:none}
  .source-pill{font-size:10px;padding:6px 7px}
@@ -340,11 +340,14 @@ dialog .modal-body>form>.form-field:first-child{margin-top:0}
  .link-list{columns:1}
 }
 @media(max-width:400px){
- .nav{gap:13px}
+ .nav{gap:9px}
  .nav button{font-size:13px}
  .saved-count{display:none}
  .pill-extra{display:none}
- .source-pill{font-size:9px;padding:6px 5px;letter-spacing:.2px;gap:4px}
+ .source-pill{max-width:54px;font-size:9px;padding:6px 5px;letter-spacing:.2px;gap:4px}
+ .source-pill .dot{flex-shrink:0}
+ #source-text{min-width:0;overflow:hidden;text-overflow:ellipsis}
+ .action-row>button{padding:10px 4px;gap:4px}
  .source-buttons{grid-template-columns:1fr 1fr}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
