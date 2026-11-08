@@ -6,6 +6,7 @@ import WebKit
 final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     private var webView: WKWebView!
     private let net = NetBridge()
+    private let device = DeviceBridge()
     private let selfTest = ProcessInfo.processInfo.arguments.contains("-AerisSelfTest")
 
     override func loadView() {
@@ -13,6 +14,7 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         let webRoot = Bundle.main.url(forResource: "web", withExtension: nil)!
         config.setURLSchemeHandler(AssetSchemeHandler(root: webRoot), forURLScheme: AssetSchemeHandler.scheme)
         config.userContentController.addScriptMessageHandler(net, contentWorld: .page, name: "aerisNet")
+        config.userContentController.addScriptMessageHandler(device, contentWorld: .page, name: "aerisDevice")
         // Record script errors from the first line on, so a failed start can be diagnosed.
         let errorHook = "window.__aerisErrors=[];addEventListener('error',function(e){__aerisErrors.push(String(e.message)+' @'+String(e.filename||'').split('/').pop()+':'+e.lineno)});addEventListener('unhandledrejection',function(e){__aerisErrors.push('rejection: '+String(e.reason&&e.reason.message||e.reason))});"
         config.userContentController.addUserScript(WKUserScript(source: errorHook, injectionTime: .atDocumentStart, forMainFrameOnly: true))

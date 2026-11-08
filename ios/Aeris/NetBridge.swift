@@ -9,12 +9,12 @@ final class NetBridge: NSObject, WKScriptMessageHandlerWithReply {
         "api.adsb.lol", "api.airplanes.live", "opendata.adsb.fi", "opensky-network.org",
         "api.adsbdb.com", "api.planespotters.net", "hexdb.io"
     ]
-    private static let maxBytes = 12 * 1024 * 1024
+    private static let maxBytes = 32 * 1024 * 1024 // OpenSky's worldwide list is a few MB
 
     private let session: URLSession = {
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = 12
-        config.timeoutIntervalForResource = 20
+        config.timeoutIntervalForResource = 30
         config.httpMaximumConnectionsPerHost = 4
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         config.httpAdditionalHeaders = [
@@ -36,7 +36,7 @@ final class NetBridge: NSObject, WKScriptMessageHandlerWithReply {
             return
         }
         var request = URLRequest(url: url)
-        if let timeout = body["timeout"] as? Double { request.timeoutInterval = max(1, min(timeout / 1000, 20)) }
+        if let timeout = body["timeout"] as? Double { request.timeoutInterval = max(1, min(timeout / 1000, 30)) }
         let started = Date()
         session.dataTask(with: request) { data, response, error in
             let reply: (Any?, String?)

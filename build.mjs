@@ -1,6 +1,6 @@
 import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
-import {mkdir,readFile,writeFile,copyFile} from 'node:fs/promises';
+import {mkdir,readFile,writeFile,copyFile,rm} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 const require=createRequire(import.meta.url);
 const esbuild=process.env.AERIS_ESBUILD?require(process.env.AERIS_ESBUILD):require('esbuild');
@@ -11,9 +11,10 @@ const proxy=process.env.AERIS_PROXY_URL||'';
 const loader={'.geojson':'json','.bin':'binary'};
 const opts={absWorkingDir:root,bundle:true,format:'iife',target:['es2020','safari15'],loader,legalComments:'inline',minify:true,define:{__AERIS_PROXY__:JSON.stringify(proxy)},logLevel:'warning'};
 await esbuild.build({...opts,entryPoints:['src/app.js'],outfile:'dist/app.js'});
-// Node bundles used by the unit tests.
+// Node bundles used by the unit tests (rebuilt from scratch so no stale chunks remain).
+await rm(root+'tests/lib',{recursive:true,force:true});
 const node={absWorkingDir:root,bundle:true,splitting:true,platform:'node',target:'node20',format:'esm',loader,logLevel:'warning'};
-await esbuild.build({...node,entryPoints:{core:'src/core.ts',aircraft:'src/aircraft.js',scenarios:'src/data.js',geo:'src/geo.js',types:'src/types.js',live:'src/live.js',airports:'src/airports.js',net:'src/net.js'},outdir:'tests/lib'});
+await esbuild.build({...node,entryPoints:{core:'src/core.ts',aircraft:'src/aircraft.js',scenarios:'src/data.js',geo:'src/geo.js',types:'src/types.js',live:'src/live.js',airports:'src/airports.js',net:'src/net.js',search:'src/search.js',collection:'src/collection.js'},outdir:'tests/lib'});
 const css=(await readFile(require.resolve('maplibre-gl/dist/maplibre-gl.css'),'utf8'))+'\n'+(await readFile(root+'src/style.css','utf8'));
 await writeFile(root+'dist/style.css',css);
 await copyFile(root+'data/airports.json',root+'dist/airports.json');

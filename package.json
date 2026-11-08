@@ -1,15 +1,15 @@
 {
   "name": "aeris-flight-explorer",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "Live aircraft worldwide on an accurate MapLibre world map, with honest data and real-terrain 3D.",
+  "description": "Live flight tracker: find any flight worldwide, save flights, aircraft and airports, and get alerts.",
   "scripts": {
     "start": "node server.mjs",
     "build": "node build.mjs",
     "pretest": "npm run build",
     "models": "node scripts/export-models.mjs",
-    "test": "node --test tests/core.test.mjs && node tests/server-smoke.mjs",
+    "test": "node --test tests/core.test.mjs tests/search.test.mjs && node tests/server-smoke.mjs",
     "icons": "node scripts/make-icons.mjs",
     "test:browser": "node tests/browser.mjs",
     "test:live": "node tests/live-smoke.mjs",

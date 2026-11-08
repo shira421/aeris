@@ -1,16 +1,17 @@
 # Product intent and acceptance criteria
 
-Aeris is for curious passengers, aviation enthusiasts and people watching an arrival. Its primary task is selecting an aircraft and understanding what it is doing. The design should move from recognition to detail without making the map feel like an instrument-panel wall.
+Aeris is for two groups: aviation enthusiasts, and people following their own flight or someone else's. Both mostly arrive with a name in mind (a flight number, an airline, an aircraft type, an airport), so search is the main way around, and anything found can be saved and followed with alerts.
 
-The visual direction is a light cartographic workspace with restrained teal, warm orange selection, airy off-white panels and compact typography. Orange indicates the selected object or replay position. Connection state uses text as well as colour. The camera view is immersive; the information panel remains an optional companion.
+The visual direction is a light cartographic workspace with restrained teal, warm orange selection and off-white panels. The screen carries only the search box, the map, the map toolbar and the details panel. Text is plain: short labels, no slogans or wordplay. Connection state uses text as well as colour.
 
-The map opens on Singapore the first time, then remembers where you were. Live traffic works anywhere the community networks have receivers.
+The map opens on Singapore the first time (or on your position, if you allow it), then remembers where you were. Live traffic works anywhere the community networks have receivers.
 
 ## Acceptance boundaries
 
-| Requirement | Current status (v0.3.0) | Still to do |
+| Requirement | Current status (v0.4.0) | Still to do |
 |---|---|---|
-| Search and inspect aircraft | Live worldwide from four sources; search by callsign, registration, type, operator or hex, including worldwide lookup | Historical records |
+| Search | Flight numbers (IATA or ICAO), airline names/codes/callsigns (1,043 airlines), registrations, hex, aircraft families and types, airports; worldwide lookups; airline and type lists | Scheduled (not yet departed) flights, historical records |
+| Saved and alerts | Flights, aircraft and airports; alerts for take-off, approach, landing and emergency codes; background checks in the iOS and Android apps | Push from a server for exact timing; departure-gate and delay data |
 | Rich telemetry | IAS/TAS/Mach, autopilot targets, QNH, wind, OAT, accuracy, MLAT/ADS-B when broadcast | — |
 | Aircraft and airport detail | ~100 types with published dimensions; registry data and photos; 6,045 airports with runways to scale and live traffic | Schedules, gates, NOTAMs, weather |
 | Accurate map | OpenStreetMap vector tiles at every zoom, satellite, globe, night | Self-hosted tiles for guaranteed availability |
@@ -22,18 +23,17 @@ The map opens on Singapore the first time, then remembers where you were. Live t
 
 - Visible observed/synthetic/stale/unknown state and source age.
 - Plain-language explanations of airspeed, ground speed, track and altitude.
-- Side-by-side saved-flight comparisons.
-- Portable CSV exports that preserve source class, timestamps and units.
-- Offline demo and configurable rendering quality.
+- Portable CSV exports that preserve timestamps and units.
+- Offline demo when no live source can be reached.
 
 These features are useful differentiators for this design, not claims that no competitor offers them.
 
 ## Sensible next features, not falsely represented as built
 
-A nearby-overhead view using opt-in location; useful arrival notifications with confidence rather than false precision; replay annotations; route/weather context; spotting logs; runway observation views; and a family-friendly learning mode. Prioritize these after interviewing consumers and validating the live data/3D vertical slice. Alerts require backend scheduling and explicit notification permissions; AR requires separate camera/heading calibration and permissions.
+Schedules and delays for flights that have not departed (needs a schedule data source); server push so alerts arrive on time even when the phone delays background checks; route/weather context; spotting logs; and a nearby-overhead view using the location the app already has. Background checks run when iOS or Android allows them, which can be every 15 minutes to a few hours; the app says so instead of promising more.
 
 ## Research-informed design decisions
 
-Progressive disclosure keeps advanced telemetry and provider controls out of the initial scan. A selected aircraft remains the stable primary object across map, detail and camera modes. Labels retain units and reporting basis. On narrow screens, the detail view becomes a drawer. Reduced-motion preferences affect the viewer; a pause control is always present for replay.
+Progressive disclosure keeps advanced telemetry and provider controls out of the initial scan. A selected aircraft remains the stable primary object across map, detail and camera modes. Labels retain units and reporting basis. On narrow screens, the detail view becomes a drawer. Reduced-motion preferences are respected.
 
-Usability sessions should test finding a known flight, identifying a plane overhead, understanding a stale position, entering/exiting 3D, comparing two aircraft, and finding a runway's reference dimensions. Measure task completion and confusion about observed versus inferred data. No such consumer study has yet been conducted.
+Usability sessions should test finding a known flight by flight number and by airline name, saving it and turning on alerts, identifying a plane overhead, understanding a stale position, and entering/exiting 3D. Measure task completion and confusion about observed versus inferred data. No such consumer study has yet been conducted.

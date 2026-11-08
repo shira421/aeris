@@ -2,7 +2,7 @@
 // send CORS headers. Forwards GET requests to an allowlist of flight-data hosts only.
 // Deploy: see README "Live data in the web app". Free tier: 100,000 requests a day.
 const ALLOWED_HOSTS=new Set(['api.adsb.lol','api.airplanes.live','opendata.adsb.fi','opensky-network.org','api.adsbdb.com','api.planespotters.net','hexdb.io']);
-const UA='Aeris/0.2 (+https://github.com/shira421/aeris; Cloudflare Worker proxy)';
+const UA='Aeris/0.4 (+https://github.com/shira421/aeris; Cloudflare Worker proxy)';
 function cors(origin,env){const allowed=(env.ALLOWED_ORIGINS||'https://shira421.github.io,http://localhost:4173,http://127.0.0.1:4173').split(',').map(s=>s.trim());
  return {'Access-Control-Allow-Origin':allowed.includes(origin)||allowed.includes('*')?origin||'*':allowed[0],'Access-Control-Allow-Methods':'GET, OPTIONS','Access-Control-Allow-Headers':'Accept','Access-Control-Max-Age':'86400','Vary':'Origin'};}
 export default {

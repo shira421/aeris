@@ -136,6 +136,9 @@ jobs:
           echo "Simulator $DEVICE"
           xcrun simctl bootstatus "$DEVICE" -b | tail -2
           xcrun simctl install "$DEVICE" simbuild/Build/Products/Release-iphonesimulator/Aeris.app
+          # Location for the blue dot: allow it and place the simulator in Singapore.
+          xcrun simctl privacy "$DEVICE" grant location com.shira421.aeris || true
+          xcrun simctl location "$DEVICE" set 1.3521,103.8198 || true
           START=$(date +%s)
           xcrun simctl launch --console-pty "$DEVICE" com.shira421.aeris -AerisSelfTest > ../selftest.log 2>&1 &
           sleep 15
@@ -150,6 +153,8 @@ jobs:
           cat ../selftest.log
           sips -Z 700 ../ios-simulator.png --out ../ios-small.png >/dev/null && sips -s format jpeg -s formatOptions 50 ../ios-small.png --out ../ios-small.jpg >/dev/null && echo "QA_SHOT ios-simulator $(base64 -i ../ios-small.jpg | tr -d '\n')" || true
           grep -q 'AERIS_SELFTEST.*"loaded":true.*"map":true' ../selftest.log
+          grep -q 'AERIS_SELFTEST.*"device":true' ../selftest.log
+          grep -q 'AERIS_SELFTEST.*"me":true' ../selftest.log && echo "Location reached the page through the device bridge" || echo "::warning::The simulator location did not reach the page"
 
       - name: Signed iPhone app (only when Apple signing secrets are configured)
         if: env.IOS_CERTIFICATE_P12 != '' && env.IOS_PROVISIONING_PROFILE != ''
@@ -220,7 +225,7 @@ jobs:
           SIZE=$(stat -c %s out/Aeris-iOS-unsigned.ipa)
           node -e "
             const fs=require('fs');const v=process.env.VERSION;
-            fs.writeFileSync('out/altstore-source.json',JSON.stringify({name:'Aeris',identifier:'com.shira421.aeris.source',subtitle:'Live flights on an accurate world map',iconURL:'https://shira421.github.io/aeris/icons/icon-512.png',website:'https://github.com/shira421/aeris',apps:[{name:'Aeris',bundleIdentifier:'com.shira421.aeris',developerName:'shira421',subtitle:'A closer look at flight',localizedDescription:'Live aircraft worldwide from community ADS-B networks, on an accurate OpenStreetMap world map with globe and 3D views.',iconURL:'https://shira421.github.io/aeris/icons/icon-512.png',tintColor:'#d96f49',versions:[{version:v,buildVersion:process.env.GITHUB_RUN_NUMBER,date:new Date().toISOString(),localizedDescription:'Build '+process.env.GITHUB_SHA.slice(0,7),downloadURL:'https://github.com/shira421/aeris/releases/download/latest-build/Aeris-iOS-unsigned.ipa',size:Number(process.argv[1]),minOSVersion:'15.0'}],appPermissions:{entitlements:[],privacy:{NSLocationWhenInUseUsageDescription:'Centres the map near you when you tap Locate.'}}}],news:[]},null,2));
+            fs.writeFileSync('out/altstore-source.json',JSON.stringify({name:'Aeris',identifier:'com.shira421.aeris.source',subtitle:'Live flight tracker',iconURL:'https://shira421.github.io/aeris/icons/icon-512.png',website:'https://github.com/shira421/aeris',apps:[{name:'Aeris',bundleIdentifier:'com.shira421.aeris',developerName:'shira421',subtitle:'Live flight tracker',localizedDescription:'Find any flight in the air worldwide by flight number, airline, aircraft type or registration. Save flights, aircraft and airports, and get alerts when saved flights take off and land. Live data from community ADS-B networks on an OpenStreetMap world map, with a 3D view.',iconURL:'https://shira421.github.io/aeris/icons/icon-512.png',tintColor:'#d96f49',versions:[{version:v,buildVersion:process.env.GITHUB_RUN_NUMBER,date:new Date().toISOString(),localizedDescription:'Build '+process.env.GITHUB_SHA.slice(0,7),downloadURL:'https://github.com/shira421/aeris/releases/download/latest-build/Aeris-iOS-unsigned.ipa',size:Number(process.argv[1]),minOSVersion:'15.0'}],appPermissions:{entitlements:[],privacy:{NSLocationWhenInUseUsageDescription:'Shows your position on the map and starts the map near you.'}}}],news:[]},null,2));
           " "$SIZE"
           (cd out && sha256sum * > SHA256SUMS.txt)
           ls -la out

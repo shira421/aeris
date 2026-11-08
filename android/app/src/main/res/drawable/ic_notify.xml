@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar icon for flight alerts: a single-colour aircraft. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M12,2C11.2,2 10.8,2.8 10.8,3.6L10.8,9.2L3,13.8L3,15.8L10.8,13.4L10.8,18.6L8.6,20.2L8.6,21.8L12,20.8L15.4,21.8L15.4,20.2L13.2,18.6L13.2,13.4L21,15.8L21,13.8L13.2,9.2L13.2,3.6C13.2,2.8 12.8,2 12,2Z" />
+</vector>

@@ -12,3 +12,4 @@ ios/Payload/
 ios/*.xcodeproj/
 *.ipa
 *.apk
+tests/lib/
