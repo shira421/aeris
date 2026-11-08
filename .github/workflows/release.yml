@@ -136,11 +136,24 @@ jobs:
           echo "Simulator $DEVICE"
           xcrun simctl bootstatus "$DEVICE" -b | tail -2
           xcrun simctl install "$DEVICE" simbuild/Build/Products/Release-iphonesimulator/Aeris.app
+          for i in $(seq 1 30); do xcrun simctl get_app_container "$DEVICE" com.shira421.aeris >/dev/null 2>&1 && break; sleep 1; done
           # Location for the blue dot: allow it and place the simulator in Singapore.
           xcrun simctl privacy "$DEVICE" grant location com.shira421.aeris || true
           xcrun simctl location "$DEVICE" set 1.3521,103.8198 || true
+          # The Home Screen registers a new install in the background. A launch sent before that
+          # finishes can be dropped: the app never comes to the front (seen on main, 8 Nov).
+          # Give it a moment, and relaunch if the page has not loaded within 40 s.
+          sleep 5
           START=$(date +%s)
-          xcrun simctl launch --console-pty "$DEVICE" com.shira421.aeris -AerisSelfTest > ../selftest.log 2>&1 &
+          for attempt in 1 2 3; do
+            xcrun simctl launch --console-pty --terminate-running-process "$DEVICE" com.shira421.aeris -AerisSelfTest > ../selftest.log 2>&1 &
+            for i in $(seq 1 40); do grep -q 'AERIS_EVENT page loaded' ../selftest.log && break; sleep 1; done
+            if grep -q 'AERIS_EVENT page loaded' ../selftest.log; then echo "App up on attempt $attempt"; break; fi
+            echo "::warning::Launch attempt $attempt: the app did not come to the front within 40 s, launching again"
+            cp ../selftest.log "../selftest-attempt-$attempt.log" || true
+            xcrun simctl terminate "$DEVICE" com.shira421.aeris || true
+            sleep 3
+          done
           sleep 15
           xcrun simctl io "$DEVICE" screenshot ../ios-early.png || true
           sips -Z 500 ../ios-early.png --out ../ios-early-s.png >/dev/null && sips -s format jpeg -s formatOptions 45 ../ios-early-s.png --out ../ios-early.jpg >/dev/null && echo "QA_SHOT ios-15s $(base64 -i ../ios-early.jpg | tr -d '\n')" || true
