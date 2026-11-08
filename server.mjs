@@ -1,0 +1,13 @@
+import {fileURLToPath} from 'node:url';
+import http from 'node:http';
+import {readFile,stat} from 'node:fs/promises';
+import {resolve,extname,sep} from 'node:path';
+const root=resolve(fileURLToPath(new URL('.',import.meta.url)));
+const port=Number(process.env.PORT||4173);
+const host=process.env.HOST||'127.0.0.1';
+const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.webmanifest':'application/manifest+json','.json':'application/json','.geojson':'application/geo+json','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon'};
+let cache=null,expires=0,pending=null,nextAllowed=0;
+async function live(){if(cache&&Date.now()<expires)return cache;if(pending)return pending;if(Date.now()<nextAllowed)throw new Error('Provider retry backoff');pending=(async()=>{const r=await fetch('https://api.adsb.lol/v2/point/1.36/103.99/100',{signal:AbortSignal.timeout(9000),headers:{Accept:'application/json','User-Agent':'AerisPrototype/0.1 (ADSB.lol community demo)'}});if(!r.ok){nextAllowed=Date.now()+60000;throw new Error('Provider HTTP '+r.status);}const body=await r.text();if(body.length>5_000_000)throw new Error('Oversized provider response');const data=JSON.parse(body);if(!Array.isArray(data.ac))throw new Error('Unexpected provider schema');cache=body;expires=Date.now()+15000;return body;})();try{return await pending;}finally{pending=null;}}
+const server=http.createServer(async(req,res)=>{try{const u=new URL(req.url,'http://localhost');if(req.method!=='GET'&&req.method!=='HEAD'){res.writeHead(405);res.end('Method not allowed');return;}if(u.pathname==='/api/flights'){try{const data=await live();res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store','X-Data-Source':'ADSB.lol; ODbL 1.0'});res.end(data);}catch(err){res.writeHead(502,{'Content-Type':'application/json','Retry-After':'60'});res.end(JSON.stringify({error:'Live provider unavailable',detail:err.message}));}return;}
+ let rel=decodeURIComponent(u.pathname);if(rel==='/')rel='/index.html';const staticRoot=resolve(root,'dist');const path=resolve(staticRoot,'.'+rel);if(!path.startsWith(staticRoot+sep)){res.writeHead(403);res.end('Forbidden');return;}if(!(await stat(path)).isFile())throw new Error('not file');const data=await readFile(path);res.writeHead(200,{'Content-Type':types[extname(path)]||'application/octet-stream','X-Content-Type-Options':'nosniff','Referrer-Policy':'strict-origin-when-cross-origin'});res.end(req.method==='HEAD'?undefined:data);}catch{res.writeHead(404,{'Content-Type':'text/plain'});res.end('Not found. Run npm run build first, then open /.');}});
+server.listen(port,host,()=>console.log(`Aeris preview: http://${host}:${port}`));

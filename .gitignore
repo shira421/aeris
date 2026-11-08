@@ -1,0 +1,7 @@
+node_modules/
+qa/
+tests/core.mjs
+tests/aircraft.mjs
+.env
+.env.*
+tests/scenarios.mjs

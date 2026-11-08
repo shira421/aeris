@@ -1,0 +1,56 @@
+name: Build mobile release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mobile-release
+  cancel-in-progress: false
+
+jobs:
+  android-and-ios-webapp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm test
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Build Android APK
+        working-directory: android
+        run: gradle :app:assembleDebug
+      - name: Package downloads
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk Aeris-Android-v0.1.0.apk
+          (cd dist && zip -r ../Aeris-iOS-WebApp-v0.1.0.zip .)
+          sha256sum Aeris-Android-v0.1.0.apk Aeris-iOS-WebApp-v0.1.0.zip > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Aeris-mobile-v0.1.0
+          path: |
+            Aeris-Android-v0.1.0.apk
+            Aeris-iOS-WebApp-v0.1.0.zip
+            SHA256SUMS.txt
+      - name: Create v0.1.0 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v0.1.0 >/dev/null 2>&1; then
+            echo "Release v0.1.0 already exists; this build is available as an Actions artifact. Published downloads are kept immutable."
+          else
+            gh release create v0.1.0 Aeris-Android-v0.1.0.apk Aeris-iOS-WebApp-v0.1.0.zip SHA256SUMS.txt --target "$GITHUB_SHA" --prerelease --title "Aeris v0.1.0 preview" --notes-file .github/release-notes.md
+          fi
+
