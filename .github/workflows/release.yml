@@ -100,6 +100,11 @@ jobs:
         with:
           name: web-dist
           path: dist
+      - name: Boot an iPhone simulator early (warm by the time the app is built)
+        run: |
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print(next(x['udid'] for r,l in sorted(d.items(),reverse=True) if 'iOS' in r for x in l if x['name'].startswith('iPhone')))")
+          echo "SIM_DEVICE=$DEVICE" >> "$GITHUB_ENV"
+          xcrun simctl boot "$DEVICE" || true
       - name: Generate the Xcode project
         run: |
           rm -rf ios/web && cp -R dist ios/web
@@ -127,17 +132,16 @@ jobs:
           xcodebuild -project Aeris.xcodeproj -scheme Aeris -configuration Release \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath simbuild \
             CODE_SIGNING_ALLOWED=NO build | tail -5
-          DEVICE=$(xcrun simctl list devices available -j | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print(next(x['udid'] for r,l in sorted(d.items(),reverse=True) if 'iOS' in r for x in l if x['name'].startswith('iPhone')))")
+          DEVICE="$SIM_DEVICE"
           echo "Simulator $DEVICE"
-          xcrun simctl boot "$DEVICE" || true
-          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl bootstatus "$DEVICE" -b | tail -2
           xcrun simctl install "$DEVICE" simbuild/Build/Products/Release-iphonesimulator/Aeris.app
           START=$(date +%s)
           xcrun simctl launch --console-pty "$DEVICE" com.shira421.aeris -AerisSelfTest > ../selftest.log 2>&1 &
           sleep 15
           xcrun simctl io "$DEVICE" screenshot ../ios-early.png || true
           sips -Z 500 ../ios-early.png --out ../ios-early-s.png >/dev/null && sips -s format jpeg -s formatOptions 45 ../ios-early-s.png --out ../ios-early.jpg >/dev/null && echo "QA_SHOT ios-15s $(base64 -i ../ios-early.jpg | tr -d '\n')" || true
-          sleep 45
+          sleep 60
           xcrun simctl io "$DEVICE" screenshot ../ios-simulator.png || true
           echo "--- running processes"; xcrun simctl spawn "$DEVICE" launchctl list | grep -i aeris || echo "Aeris is not running"
           echo "--- crash reports"; find ~/Library/Logs/DiagnosticReports -newermt "@$START" -iname '*Aeris*' -print -exec head -c 6000 {} \; 2>/dev/null || true

@@ -304,7 +304,7 @@ function animate(t){
   if(f){const d=displayFlight(f);if(state.view3d)map.update3D(d);map.setSelected(d,iconClass(f));}
   pushMap();updateTrail();
   if(t-lastUI>300){lastUI=t;renderPlayback();renderClock();
-   if(f){if(state.nav==='explore'&&state.tab==='overview'){for(const [key,kind] of [['altitude','alt'],['groundSpeed','speed'],['verticalRate','vertical'],['track','°']]){const el=$(`[data-value="${key}"]`);if(el)el.innerHTML=fmt(f[key],kind,kind==='vertical'&&state.units==='metric'?1:0)+`<small>${unit(kind)}</small>`;}if($('#flight-phase'))$('#flight-phase').textContent=phase(f);}
+   if(f){if(state.nav==='explore'&&state.tab==='overview'){for(const [key,kind] of [['altitude','alt'],['groundSpeed','speed'],['verticalRate','vertical'],['track','°']]){const el=$(`[data-value="${key}"]`);if(el)el.innerHTML=fmt(f[key],kind,kind==='vertical'&&state.units==='metric'?1:0)+`<small>${unit(kind)}</small>`;}const vsNote=$('[data-metric="verticalRate"] .metric-note');if(vsNote)vsNote.textContent=f.verticalRate<-50?'Descending':f.verticalRate>50?'Climbing':'Level / unavailable';if($('#flight-phase'))$('#flight-phase').textContent=phase(f);}
     if($('#detail-data-status'))$('#detail-data-status').textContent=dataStatus(f);
     if(state.view3d){const alt=map.lastAltitude;$('#scene-source').textContent=f.simulated?'SIMULATED FLIGHT':state.replayTime!==null?'SESSION REPLAY':quality(f).status.toUpperCase()+' · '+f.source;if(alt?.metres!=null)$('#scene-fidelity').textContent=`${fmt(alt.metres/FT,'alt')} ${unit('alt')} above sea level · ${alt.basis}`;}}
    else if(state.selected&&state.mode==='live'&&!live.get(state.selected)){toast('The selected aircraft left coverage.');deselect();}

@@ -13,6 +13,9 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         let webRoot = Bundle.main.url(forResource: "web", withExtension: nil)!
         config.setURLSchemeHandler(AssetSchemeHandler(root: webRoot), forURLScheme: AssetSchemeHandler.scheme)
         config.userContentController.addScriptMessageHandler(net, contentWorld: .page, name: "aerisNet")
+        // Record script errors from the first line on, so a failed start can be diagnosed.
+        let errorHook = "window.__aerisErrors=[];addEventListener('error',function(e){__aerisErrors.push(String(e.message)+' @'+String(e.filename||'').split('/').pop()+':'+e.lineno)});addEventListener('unhandledrejection',function(e){__aerisErrors.push('rejection: '+String(e.reason&&e.reason.message||e.reason))});"
+        config.userContentController.addUserScript(WKUserScript(source: errorHook, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         config.allowsInlineMediaPlayback = true
         config.defaultWebpagePreferences.allowsContentJavaScript = true
         config.preferences.javaScriptCanOpenWindowsAutomatically = false
@@ -63,16 +66,34 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         return nil
     }
 
+    private var terminations: [Date] = []
+
+    // iOS may stop the web content process under memory pressure. Reload, but not in a loop.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        webView.reload()
+        let now = Date()
+        terminations = terminations.filter { now.timeIntervalSince($0) < 60 } + [now]
+        print("AERIS_EVENT web content process terminated (\(terminations.count) in the last minute)"); fflush(stdout)
+        if terminations.count <= 3 { webView.reload() }
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        print("AERIS_EVENT page loaded \(webView.url?.absoluteString ?? "")"); fflush(stdout)
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        print("AERIS_EVENT navigation failed: \(error.localizedDescription)"); fflush(stdout)
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        print("AERIS_EVENT provisional navigation failed: \(error.localizedDescription)"); fflush(stdout)
     }
 
     /// CI smoke test: prints what the app shows after start-up, so a simulator run can
     /// confirm the bundle loads and live data arrives through the native bridge.
     private func scheduleSelfTest() {
-        for delay in [10.0, 25.0, 45.0, 58.0] {
+        for delay in [10.0, 25.0, 45.0, 70.0] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                let js = "JSON.stringify(window.__aerisSelfTest ? window.__aerisSelfTest() : {loaded: !!document.querySelector('#app .topbar')})"
+                let js = "JSON.stringify(window.__aerisSelfTest ? Object.assign(window.__aerisSelfTest(), {errors: window.__aerisErrors}) : {loaded: !!document.querySelector('#app .topbar'), readyState: document.readyState, href: location.href, scripts: document.scripts.length, body: document.body ? document.body.innerHTML.length : -1, errors: window.__aerisErrors})"
                 self?.webView.evaluateJavaScript(js) { result, error in
                     print("AERIS_SELFTEST t=\(Int(delay)) \(result as? String ?? "nil") \(error.map { String(describing: $0) } ?? "")")
                     fflush(stdout)
