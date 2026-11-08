@@ -22,6 +22,27 @@ export async function notify(title,body,tag){
  new g.Notification(title,{body,tag,icon:'./icons/icon-192.png'});
 }
 /** Hand the watched flights to the iOS or Android app, which checks them in the background now and then. */
-export async function syncWatchList(items){if(bridge()){try{await nativeCall('watch',{items});}catch{}}}
+export async function syncWatchList(items){if(bridge())return nativeCall('watch',{items},8000);}
+
+/** Serialize/coalesce native writes. Only acknowledged snapshots are considered saved. */
+export function createWatchSync(send=syncWatchList,{onError=()=>{}}={}){
+ let saved=null,pending=null,running=null;
+ return items=>{
+  pending=JSON.stringify(items);
+  if(!running)running=(async()=>{
+   // Yield once so the promise is assigned even when the snapshot was already acknowledged.
+   await Promise.resolve();
+   try{
+    while(pending!==null){
+     const snapshot=pending;pending=null;if(snapshot===saved)continue;
+     try{await send(JSON.parse(snapshot));saved=snapshot;}
+     catch(error){onError(error);return false;}
+    }
+    return true;
+   }finally{running=null;}
+  })();
+  return running;
+ };
+}
 /** Whether alerts can arrive while Aeris is closed (the apps check in the background; browsers cannot). */
 export const backgroundChecks=()=>Boolean(bridge());

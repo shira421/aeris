@@ -16,7 +16,7 @@ await esbuild.build({...opts,entryPoints:['src/rules.js'],outfile:'dist/rules.js
 // Node bundles used by the unit tests (rebuilt from scratch so no stale chunks remain).
 await rm(root+'tests/lib',{recursive:true,force:true});
 const node={absWorkingDir:root,bundle:true,splitting:true,platform:'node',target:'node20',format:'esm',loader,logLevel:'warning'};
-await esbuild.build({...node,entryPoints:{core:'src/core.ts',aircraft:'src/aircraft.js',scenarios:'src/data.js',geo:'src/geo.js',types:'src/types.js',live:'src/live.js',airports:'src/airports.js',net:'src/net.js',search:'src/search.js',collection:'src/collection.js',rules:'src/rules.js'},outdir:'tests/lib'});
+await esbuild.build({...node,entryPoints:{core:'src/core.ts',aircraft:'src/aircraft.js',scenarios:'src/data.js',geo:'src/geo.js',types:'src/types.js',live:'src/live.js',airports:'src/airports.js',net:'src/net.js',device:'src/device.js',search:'src/search.js',collection:'src/collection.js',rules:'src/rules.js'},outdir:'tests/lib'});
 const css=(await readFile(require.resolve('maplibre-gl/dist/maplibre-gl.css'),'utf8'))+'\n'+(await readFile(root+'src/style.css','utf8'));
 await writeFile(root+'dist/style.css',css);
 await copyFile(root+'data/airports.json',root+'dist/airports.json');

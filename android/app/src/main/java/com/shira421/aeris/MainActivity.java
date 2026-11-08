@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Callable;
 import org.json.JSONObject;
 
 public final class MainActivity extends Activity {
@@ -93,7 +94,7 @@ public final class MainActivity extends Activity {
                     if (connection != null) connection.disconnect();
                 }
                 final String script = "window.__aerisNetReply&&window.__aerisNetReply(" + JSONObject.quote(id) + "," + reply + ")";
-                webView.post(() -> { if (webView != null) webView.evaluateJavascript(script, null); });
+                runOnUiThread(() -> { if (webView != null) webView.evaluateJavascript(script, null); });
             });
         }
 
@@ -112,6 +113,7 @@ public final class MainActivity extends Activity {
             replyDevice(id, null, "Bad request");
             return;
         }
+        try {
         switch (message.optString("action")) {
             case "location":
                 requestLocation(id);
@@ -125,24 +127,40 @@ public final class MainActivity extends Activity {
                 break;
             case "watch": {
                 final org.json.JSONArray items = message.optJSONArray("items");
-                network.execute(() -> FlightWatch.setItems(getApplicationContext(), items));
-                replyDevice(id, true, null);
+                runDeviceTask(id, () -> {
+                    FlightWatch.setItems(getApplicationContext(), items);
+                    return true;
+                });
                 break;
             }
             case "watchState":
-                network.execute(() -> {
-                    final org.json.JSONArray items = FlightWatch.items(getApplicationContext());
-                    runOnUiThread(() -> replyDevice(id, items, null));
-                });
+                runDeviceTask(id, () -> FlightWatch.items(getApplicationContext()));
                 break;
             case "runChecks":
-                network.execute(() -> {
-                    final JSONObject summary = FlightWatch.checkAll(getApplicationContext());
-                    runOnUiThread(() -> replyDevice(id, summary, null));
-                });
+                runDeviceTask(id, () -> FlightWatch.checkAll(getApplicationContext()));
                 break;
             default:
                 replyDevice(id, null, "Unknown action");
+        }
+        } catch (RuntimeException error) {
+            replyDevice(id, null, "The device request could not be completed. Please try again.");
+        }
+    }
+
+    /** A native failure must reject the web request, never escape an executor and kill the app. */
+    private void runDeviceTask(String id, Callable<Object> task) {
+        try {
+            network.execute(() -> {
+                Object value = null;
+                String error = null;
+                try { value = task.call(); }
+                catch (Exception failure) { error = "Background checks could not be updated. Please try again."; }
+                final Object result = value;
+                final String failure = error;
+                runOnUiThread(() -> replyDevice(id, result, failure));
+            });
+        } catch (RuntimeException error) {
+            replyDevice(id, null, "The app is closing. Reopen Aeris to update background checks.");
         }
     }
 

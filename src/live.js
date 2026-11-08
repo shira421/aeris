@@ -16,6 +16,7 @@ export class LiveFeed{
   this.onUpdate=onUpdate;this.onStatus=onStatus;this.storage=storage;this.now=now;
   this.flights=new Map();this.tracks=new Map();this.offsets=new Map();
   this.focus=null;this.view=null;this.circles=[];this.circleState=new Map();
+  this.inflight=new Map();this.viewKeys=new Set();
   this.running=false;this.timer=null;this.paused=false;
   this.enabled=new Set(PROVIDERS.map(p=>p.id));
   this.health=new Map(PROVIDERS.map(p=>[p.id,{id:p.id,name:p.name,state:'idle',ok:0,fail:0,ms:null,aircraft:null,lastOk:null,error:null,nextAt:0,backoff:0,busy:false}]));
@@ -33,10 +34,12 @@ export class LiveFeed{
   const circles=coverageCircles(bounds,250,24);const key=c=>c.lat.toFixed(1)+','+c.lon.toFixed(1)+','+c.nm;
   // Keep timing state for circles that are still wanted, so panning does not refetch everything.
   const next=new Map();for(const c of circles){const k=key(c);next.set(k,this.circleState.get(k)||{last:0,busy:false});}
-  const fresh=circles.some(c=>!this.circleState.has(key(c)));
+  // Preserve requests still in flight and the focus timer across camera moves.
+  for(const [k,st] of this.circleState)if(st.busy||k==='focus'||k.startsWith('t:')&&this.tracked?.has(k.slice(2)))next.set(k,st);
   this.circles=circles.map(c=>({...c,key:key(c)}));this.circleState=next;
+  this.viewKeys=new Set(this.circles.map(c=>c.key));
   // A new area on screen is fetched right away rather than on the next tick.
-  if(fresh&&this.running&&!this.paused)this.dispatch();
+  if(this.running&&!this.paused)this.dispatch();
  }
  setFocus(id){this.focus=id;}
  /** In the 3D view only the followed aircraft is refreshed: far fewer requests. */
@@ -55,8 +58,13 @@ export class LiveFeed{
   const now=this.now()*1000;const readsb=this.reachable().filter(p=>p.kind==='readsb');
   // Round-robin: the source that has waited longest goes first, so requests alternate.
   for(const p of [...readsb].sort((a,b)=>(this.health.get(a.id).lastUsed||0)-(this.health.get(b.id).lastUsed||0))){
-   const h=this.health.get(p.id);if(h.busy||now<h.nextAt)continue;
-   const job=this.nextJob(p);if(!job)continue;
+   const h=this.health.get(p.id);if(now<h.nextAt)continue;
+   const active=this.inflight.get(p.id)||new Set(),fresh=this.focusOnly?null:this.freshAreaJob();
+   // One bounded replacement may start while an obsolete viewport request finishes. This also
+   // works in native WebViews where cancelling a JS fetch cannot cancel the native connection.
+   const replace=active.size===1&&fresh&&[...active].every(j=>j.kind!=='area'||!this.viewKeys.has(j.circle.key));
+   if(active.size>=(replace?2:1))continue;
+   const job=replace?fresh:this.nextJob(p);if(!job)continue;
    this.run(p,job);
   }
   // OpenSky is the fallback when every faster source is failing (it is slower and credit-limited).
@@ -64,8 +72,14 @@ export class LiveFeed{
   if(os&&this.view&&!this.focusOnly){const h=this.health.get(os.id);const noReadsb=!readsb.length||readsb.every(p=>['error','blocked','refused','limited'].includes(this.health.get(p.id).state));
    if(!h.busy&&now>=h.nextAt&&noReadsb)this.runOpenSky(os);}
  }
+ freshAreaJob(){
+  for(const circle of this.circles){const state=this.circleState.get(circle.key);if(state&&!state.busy&&!state.requested)return {kind:'area',circle,state};}
+  return null;
+ }
  nextJob(p){
   const now=this.now();
+  // Show the new region before spending another request on an off-screen selection.
+  const fresh=this.focusOnly?null:this.freshAreaJob();if(fresh)return fresh;
   // The selected aircraft first, when it is not inside any circle refreshed in the last 2 s.
   if(this.focus&&!this.focus.startsWith('demo')){const f=this.flights.get(this.focus);const covered=f&&this.circles.some((c,i)=>i<3&&distance([c.lat,c.lon],[f.lat,f.lon])<c.nm*1852*.95);
    const st=this.circleState.get('focus')||{last:0,busy:false};this.circleState.set('focus',st);
@@ -79,19 +93,22 @@ export class LiveFeed{
   return best;
  }
  async run(p,job){
-  const h=this.health.get(p.id);h.busy=true;h.lastUsed=this.now();job.state.busy=true;
+  const h=this.health.get(p.id);h.busy=true;h.lastUsed=this.now();job.state.busy=true;job.state.requested=true;
+  // Pace starts, including replacements. A slow response must not stall a new viewport for 8 s.
+  h.nextAt=Math.max(h.nextAt,this.now()*1000+p.minGap);
+  const active=this.inflight.get(p.id)||new Set();this.inflight.set(p.id,active);active.add(job);
   const url=job.kind==='hex'?p.hex(job.id):p.area({...job.circle,nm:Math.min(job.circle.nm,p.maxRadius)});
   try{
    const {data,ms,serverDate}=await getJSON(url,{timeout:8000});
    const flights=normalizeADSB(data,this.now(),p.name);
    job.state.last=this.now();this.ingest(flights);
-   Object.assign(h,{state:'ok',ok:h.ok+1,ms:Math.round(ms),aircraft:flights.length,lastOk:this.now(),error:null,backoff:0,nextAt:this.now()*1000+p.minGap,serverLag:serverDate?Math.round(this.now()-serverDate):null});
+   Object.assign(h,{state:'ok',ok:h.ok+1,ms:Math.round(ms),aircraft:flights.length,lastOk:this.now(),error:null,backoff:0,serverLag:serverDate?Math.round(this.now()-serverDate):null});
   }catch(err){
    job.state.last=this.now()-this.interval(0)+1.5;// retry this area soon, via another provider
    h.fail++;h.error=err.message;h.backoff=Math.min(300000,Math.max(5000,(h.backoff||2500)*2));
    h.state=err.status===429?'limited':err.status===403?'refused':err.blocked?'blocked':'error';
-   h.nextAt=this.now()*1000+(err.status===403?600000:h.backoff);
-  }finally{h.busy=false;job.state.busy=false;this.onStatus(this.status());}
+   h.nextAt=Math.max(h.nextAt,this.now()*1000+(err.status===403?600000:h.backoff));
+  }finally{active.delete(job);h.busy=active.size>0;job.state.busy=false;this.onStatus(this.status());}
  }
  openSkyCredits(){const day=new Date(this.now()*1000).toISOString().slice(0,10);let s={day,used:0};try{s=JSON.parse(this.storage?.getItem('aeris-opensky')||'null')||s;}catch{}if(s.day!==day)s={day,used:0};return s;}
  async runOpenSky(p){
