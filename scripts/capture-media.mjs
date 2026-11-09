@@ -43,7 +43,9 @@ try{
  const page=await context.newPage();page.on('pageerror',e=>console.log('pageerror',e.message));
  await page.goto(BASE+'/');
  await page.evaluate(()=>window.__aeris.map.map.jumpTo({center:[-0.25,51.5],zoom:8.4}));
- await page.waitForFunction(()=>window.__aerisSelfTest().onMap>40,null,{timeout:60000});
+ const ready=await page.waitForFunction(()=>window.__aerisSelfTest().onMap>25,null,{timeout:90000}).then(()=>true,()=>false);
+ console.log('state',JSON.stringify(await page.evaluate(()=>window.__aerisSelfTest())));
+ if(!ready)throw new Error('No live aircraft on the map');
  await page.waitForFunction(()=>window.__aeris.map.map.areTilesLoaded(),null,{timeout:30000}).catch(()=>{});await wait(4000);
  await jpeg(page,'map.jpg');report.map=await page.evaluate(()=>window.__aerisSelfTest().onMap);
 
@@ -100,7 +102,7 @@ try{
  await phone.addInitScript(()=>{try{localStorage.setItem('aeris-locationAsked','true');}catch{}});
  const p2=await phone.newPage();await p2.goto(BASE+'/');
  await p2.evaluate(()=>window.__aeris.map.map.jumpTo({center:[103.95,1.33],zoom:8.6}));
- await p2.waitForFunction(()=>window.__aerisSelfTest().onMap>15,null,{timeout:60000});await p2.waitForFunction(()=>window.__aeris.map.map.areTilesLoaded(),null,{timeout:30000}).catch(()=>{});await wait(4000);
+ await p2.waitForFunction(()=>window.__aerisSelfTest().onMap>10,null,{timeout:90000}).catch(()=>{});await p2.waitForFunction(()=>window.__aeris.map.map.areTilesLoaded(),null,{timeout:30000}).catch(()=>{});await wait(4000);
  await jpeg(p2,'phone-map.jpg',{quality:80});
  const pid=await p2.evaluate(()=>{const b=window.__aeris.map.map.getBounds();return window.__aeris.live.list().filter(f=>/^[A-Z]{3}\d/.test(f.callsign)&&!f.onGround&&b.contains([f.lon,f.lat])).map(f=>f.id);});
  for(const id of pid.slice(0,10)){await p2.evaluate(id=>window.__aeris.selectFlight(id),id);if(await p2.waitForFunction(()=>/km to go/.test(document.querySelector('#detail').textContent),null,{timeout:6000}).then(()=>true,()=>false))break;}
