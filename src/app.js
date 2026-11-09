@@ -7,7 +7,6 @@ import {loadAirports,airportByCode,searchAirports,nearestAirports,airportsGeoJSO
 import {routeFor,aircraftFor,photoFor} from './enrich.js';
 import {typeFor,iconClass} from './types.js';
 import {altitudeMSL} from './geo.js';
-import {demoFlights,scenarioTrack,DEMO_DURATION} from './data.js';
 import {searchAirlines,searchTypes,directLookups,matchesFlight,airlineFor,flightNumber} from './search.js';
 import {Collection,Watcher,place,localDate,daysBetween} from './collection.js';
 import {currentLocation,notificationPermission,notify,createWatchSync,backgroundChecks} from './device.js';
@@ -37,21 +36,21 @@ function savePref(k,v){try{localStorage.setItem('aeris-'+k,JSON.stringify(v));}c
 const now=()=>Date.now()/1000;
 const storage=(()=>{try{return localStorage;}catch{return null;}})();
 
-// ——— Data path: native app bridge, a proxy, or (for browsers without either) the demo ———
+// ——— Data path: the native app's bridge, or (in browsers) the Aeris relay. Always live: no demo traffic. ———
 const BUILD_PROXY=typeof __AERIS_PROXY__!=='undefined'?__AERIS_PROXY__:'';
 const staticHost=!['http:','https:'].includes(location.protocol)||location.hostname==='appassets.androidplatform.net'||location.hostname.endsWith('.github.io');
 const defaultProxy=()=>BUILD_PROXY||(staticHost?null:location.origin+'/api/proxy');
 setProxy(loadPref('proxy',null)||defaultProxy());
 const canLive=()=>Boolean(bridge()||getProxy());
 
-const state={nav:'explore',tab:'overview',selected:null,airport:null,mode:canLive()?'live':'demo',view3d:false,studio:false,camera:'chase',demoTime:410,flights:demoFlights(410),
+const state={nav:'explore',tab:'overview',selected:null,airport:null,mode:'live',view3d:false,studio:false,camera:'chase',
  units:loadPref('units','aviation'),mapStyle:loadPref('mapStyle','map'),projection:loadPref('projection','mercator'),showGround:loadPref('showGround',true),info:{},center:{lat:1.36,lng:103.99},zoom:6.6,
  me:null,search:{q:'',remote:null,results:null},trip:null,tripView:'list',historyRange:'year',mapFilter:null,form:null};
 let studio=null,lastUI=0,lastMapPush=0,lastFrame=0,lastTrail=0,lastSlow=0,lastSelected=0,toastTimer,dialogFocus,infoFor=null,searchTimer,searchSeq=0,pageVisible=true,mapDirty=true,mapInterval=250;
 const picks=new Map();// search results not yet on the map, by id
 
 $('#app').innerHTML=`
-<header class="topbar"><button class="brand" data-action="explore" aria-label="Aeris home"><svg viewBox="0 0 32 36" aria-hidden="true"><path d="M2 27 16 3l14 24-14-7Z" fill="#204e51"/><path d="m6 30 10-6 10 6-10 5Z" fill="#d87852"/></svg><span>AERIS</span></button><nav class="nav" aria-label="Main navigation"><button data-action="explore" class="active">Explore</button><button data-action="trips">Trips</button><button data-action="saved">Saved<span class="saved-count"></span></button><button data-action="airports">Airports</button></nav><div class="top-actions"><button id="source-pill" class="source-pill" data-action="connect" title="Data sources"><span class="dot"></span><span id="source-text">CONNECTING</span></button><button class="iconbutton" data-action="settings" aria-label="Settings" title="Settings">${icon('settings')}</button></div></header>
+<header class="topbar"><button class="brand" data-action="explore" aria-label="Aeris home"><svg viewBox="0 0 32 36" aria-hidden="true"><path d="M2 27 16 3l14 24-14-7Z" fill="#204e51"/><path d="m6 30 10-6 10 6-10 5Z" fill="#d87852"/></svg><span>AERIS</span></button><nav class="nav" aria-label="Main navigation"><button data-action="explore" class="active">Explore</button><button data-action="trips">Trips</button><button data-action="saved">Saved<span class="saved-count"></span></button><button data-action="airports">Airports</button></nav><div class="top-actions"><button id="source-pill" class="sources-button" data-action="connect" aria-label="Data sources">${icon('signal')}<span>Sources</span></button><button class="iconbutton" data-action="settings" aria-label="Settings" title="Settings">${icon('settings')}</button></div></header>
 <div class="workspace"><main class="stage" aria-label="Flight map"><div class="map-canvas" id="map" aria-label="Map of live aircraft"></div><div class="scene-container" id="scene"></div>
 <div class="search-area"><div class="search-box">${icon('search')}<label class="sr-only" for="search">Search flights, airlines, aircraft and airports</label><input id="search" type="search" placeholder="Flight, airline, aircraft or airport" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search" aria-controls="search-results" aria-expanded="false"><button class="search-clear" data-action="clear-search" aria-label="Clear search">${icon('close')}</button></div><div class="search-results" id="search-results" role="listbox"></div></div>
 <div class="map-tools"><div class="tool-group"><button class="compass" data-action="north" aria-label="Reset north and tilt" title="Reset north and tilt"><span>N</span></button></div><div class="tool-group"><button data-action="zoom-in" aria-label="Zoom in" title="Zoom in">${icon('plus')}</button><button data-action="zoom-out" aria-label="Zoom out" title="Zoom out">${icon('minus')}</button></div><div class="tool-group"><button data-action="locate-me" aria-label="Show my location" title="Show my location">${icon('me')}</button><button data-action="map-options" aria-label="Map style and filters" title="Map style and filters">${icon('layers')}</button></div></div>
@@ -65,7 +64,7 @@ $('#app').innerHTML=`
 const map=new WorldMap($('#map'),{onSelect:id=>selectFlight(id),onAirport:selectAirport,onMove:onMapMove,onStyle:html=>{$('#map-credit').innerHTML=html;},onError:msg=>toast(msg),onReady:()=>{map.setProjection(state.projection);if(state.mapStyle!=='map')map.setStyle(state.mapStyle);if(state.me)map.setMe(state.me);}});
 map.projection=state.projection;
 {const lp=loadPref('layers',{})||{};for(const k of ['labels','trails','airports','altitudeColors'])if(typeof lp[k]==='boolean')map[k]=lp[k];}
-const live=new LiveFeed({storage,onUpdate:()=>{mapDirty=true;if(state.mode==='live')updateTrail(true);},onStatus:()=>renderSource()});
+const live=new LiveFeed({storage,onUpdate:()=>{mapDirty=true;updateTrail(true);},onStatus:()=>renderSource()});
 for(const id of loadPref('disabledProviders',[]))live.setEnabled(id,false);
 const collection=new Collection(storage);
 const nearAirport=(lat,lon,km)=>{const a=nearestAirports(lat,lon,1,'LMS')[0];return a&&a.distanceKm<=km?a:null;};
@@ -83,11 +82,11 @@ setTimeout(()=>loadAirports().then(()=>{map.setAirports(airportsGeoJSON());if(st
 if(!map.ok){const v=loadPref('view',null),c=v?.center||[103.99,1.36];onMapMove({west:c[0]-4,east:c[0]+4,south:c[1]-3,north:c[1]+3},7,{lng:c[0],lat:c[1]});}
 function onMapMove(bounds,zoom,center){state.center=center;state.zoom=zoom;mapDirty=true;live.setView(bounds,zoom);}
 
-const selected=()=>state.mode==='live'?live.get(state.selected):state.flights.find(f=>f.id===state.selected)||null;
-function currentFlights(){return state.mode==='demo'?state.flights:live.list();}
-function displayFlight(f){return state.mode==='live'?(live.position(f.id)||f):f;}
-function visibleFlights(){return currentFlights().filter(f=>(state.showGround||!f.onGround)&&(state.mode==='demo'||quality(f).age<=LIMITS.lost)&&(!state.mapFilter||state.mapFilter.has(f.flight||f.callsign)||f.id===state.selected));}
-const stale=f=>!f.simulated&&quality(f).age>LIMITS.stale;
+const selected=()=>live.get(state.selected)||null;
+function currentFlights(){return live.list();}
+function displayFlight(f){return live.position(f.id)||f;}
+function visibleFlights(){return currentFlights().filter(f=>(state.showGround||!f.onGround)&&quality(f).age<=LIMITS.lost&&(!state.mapFilter||state.mapFilter.has(f.flight||f.callsign)||f.id===state.selected));}
+const stale=f=>quality(f).age>LIMITS.stale;
 
 // ——— Formatting ———
 function fmt(v,kind,digits=0){if(v===null||v===undefined||!Number.isFinite(v))return '—';let n=v;if(state.units==='metric'){if(kind==='alt')n*=FT;if(kind==='speed')n*=KT*3.6;if(kind==='vertical')n*=FT/60;}return new Intl.NumberFormat('en-SG',{maximumFractionDigits:digits,minimumFractionDigits:digits}).format(n);}
@@ -120,27 +119,24 @@ function selectFlight(id,{fly=false}={}){
 }
 function deselect(){state.selected=null;live.setFocus(null);state.info={};infoFor=null;map.setSelected(null);map.setTrail([]);map.setRoute(null);if(state.view3d)closeScene();renderNav();renderDetail();$('.workspace').classList.remove('detail-open');}
 /** Put a flight found by search (anywhere in the world) on the map and go to it. */
-function goTo(f){if(state.mode==='live'&&!live.get(f.id))live.add(f);selectFlight(f.id,{fly:true});}
+function goTo(f){if(!live.get(f.id))live.add(f);selectFlight(f.id,{fly:true});}
 async function findAndGo(kind,value,label){
  const local=currentFlights().find(f=>sameAs(f,{kind,value}));
  if(local){goTo(local);return true;}
- if(state.mode!=='live'){toast('Live flights need the Aeris app or a data proxy.');return false;}
+ if(!canLive()){toast(liveProblem().short);return false;}
  toast(`Looking for ${label}…`);
  try{const list=await live.query(kind,value);const f=list.find(x=>x.lat!=null);if(f){goTo(f);return true;}}catch(err){toast(err.message);return false;}
  toast(`${label} is not in the air right now.`);return false;
 }
 async function loadInfo(f){
- if(f.simulated){state.info={route:demoRoute(f)};infoFor=f.id;updateRoute();return;}
  if(infoFor===f.id)return;infoFor=f.id;state.info={loading:true};const id=f.id;
  const [r,a,p]=await Promise.allSettled([routeFor(f.flight||f.callsign),aircraftFor(id),photoFor(id,f.registration)]);
  if(state.selected!==id)return;
  state.info={route:r.value||null,aircraft:a.value||null,photo:p.value||null};renderDetail();updateRoute();
 }
-function demoRoute(f){const o=airportByCode(f?.route?.[0]),d=airportByCode(f?.route?.[1]);return o&&d?{origin:o,destination:d,airline:{name:f.airline},source:'demo'}:null;}
-function routeCheck(f){const r=state.info.route;if(!r?.origin||!r?.destination)return null;if(f.simulated)return {plausible:true,progress:null};return routeFit(displayFlight(f),[r.origin.lat,r.origin.lon],[r.destination.lat,r.destination.lon]);}
-function updateRoute(){const f=selected();if(!f){map.setRoute(null);return;}const r=state.info.route,fit=routeCheck(f);if(r&&fit?.plausible)map.setRoute(r.origin,r.destination,f.simulated?null:displayFlight(f));else map.setRoute(null);}
+function routeCheck(f){const r=state.info.route;if(!r?.origin||!r?.destination)return null;return routeFit(displayFlight(f),[r.origin.lat,r.origin.lon],[r.destination.lat,r.destination.lon]);}
+function updateRoute(){const f=selected();if(!f){map.setRoute(null);return;}const r=state.info.route,fit=routeCheck(f);if(r&&fit?.plausible)map.setRoute(r.origin,r.destination,displayFlight(f));else map.setRoute(null);}
 function updateTrail(force=false){const t=performance.now();if(!force&&t-lastTrail<1000)return;lastTrail=t;const f=selected();if(!f||!map.trails){map.setTrail([]);return;}
- if(f.simulated){map.setTrail(scenarioTrack(f.id).filter(p=>p.scenarioSeconds<=state.demoTime),f);return;}
  map.setTrail(live.track(f.id),displayFlight(f));}
 function selectAirport(id){state.airport=airportByCode(id);if(!state.airport)return;if(state.nav==='trips')leavePlan();state.nav='airports';closeSearch();if(state.view3d)closeScene();map.flyTo(state.airport.lat,state.airport.lon,Math.max(map.getZoom(),10));renderNav();renderDetail();if(innerWidth<=800)$('.workspace').classList.add('detail-open');}
 /** Push positions to the map, at a rate that drops as more aircraft are on screen. */
@@ -154,7 +150,7 @@ function pushMap(force=false){
 // ——— Panels ———
 function metric(label,value,kind,key,ic,note=''){return `<button class="metric" data-metric="${key}"><span class="metric-label">${icon(ic)}${label}</span><span class="metric-value" data-value="${key}">${fmt(value,kind,kind==='vertical'&&state.units==='metric'?1:0)}<small>${unit(kind)}</small></span><span class="metric-note" data-note="${key}">${note}</span></button>`;}
 function vsNote(v){return v==null?'Not reported':v<-50?'Descending':v>50?'Climbing':'Level';}
-function chart(f){let h=f.simulated?scenarioTrack(f.id):live.track(f.id);h=h.filter(p=>p.altitude!==null);if(h.length<2)return '';const max=Math.max(1000,...h.map(p=>p.altitude));const d=h.map((p,i)=>`${i?'L':'M'}${(i/(h.length-1)*280).toFixed(1)},${(64-Math.max(0,p.altitude)/max*55).toFixed(1)}`).join(' ');return `<div class="chart-heading">Altitude<span>${f.simulated?'demo':'since you opened Aeris'} · ${unit('alt')}</span></div><svg class="alt-chart" viewBox="0 0 280 78" role="img" aria-label="Altitude profile"><path d="M0 20H280M0 43H280M0 65H280" stroke="#e7ece5" stroke-dasharray="3 4"/><path d="${d}L280 70H0Z" fill="#8caa8d22"/><path d="${d}" fill="none" stroke="#729b7f" stroke-width="1.8"/></svg>`;}
+function chart(f){let h=live.track(f.id);h=h.filter(p=>p.altitude!==null);if(h.length<2)return '';const max=Math.max(1000,...h.map(p=>p.altitude));const d=h.map((p,i)=>`${i?'L':'M'}${(i/(h.length-1)*280).toFixed(1)},${(64-Math.max(0,p.altitude)/max*55).toFixed(1)}`).join(' ');return `<div class="chart-heading">Altitude<span>since you opened Aeris · ${unit('alt')}</span></div><svg class="alt-chart" viewBox="0 0 280 78" role="img" aria-label="Altitude profile"><path d="M0 20H280M0 43H280M0 65H280" stroke="#e7ece5" stroke-dasharray="3 4"/><path d="${d}L280 70H0Z" fill="#8caa8d22"/><path d="${d}" fill="none" stroke="#729b7f" stroke-width="1.8"/></svg>`;}
 function flightRow(f,extra=''){const a=airlineFor(f.callsign);return `<button class="flight-list-item" data-flight="${e(f.id)}"><span class="airline-monogram">${e((a?.iata||f.callsign||'?').slice(0,2))}</span><span><strong>${e(titleOf(f))}</strong><small>${e(extra||[a?.name||f.operator||f.registration,f.type].filter(Boolean).join(' · '))}</small></span><span class="item-end"><small>${f.onGround?'On ground':fmt(f.altitude,'alt')+' '+unit('alt')}</small></span>${icon('arrow')}</button>`;}
 function routeHTML(f){
  const r=state.info.route,fit=r?routeCheck(f):null;const d=displayFlight(f);
@@ -172,7 +168,7 @@ function familyText(s){return ({heavy:'Wide-body',jumbo:'Wide-body, four engines
 function engineText(s){if(s.generic)return 'Unknown';if(s.rotor)return 'Turbine';return `${s.eng} × ${s.prop?'propeller':'jet'}${s.mount==='tail'?', rear-mounted':s.mount==='tri'?', two on the wings and one in the tail':''}`;}
 /** What is known about a flight number now: from the map, or from the last check. Only what was seen. */
 function watchStatus(cs){
- const f=currentFlights().find(x=>(x.flight||x.callsign)===cs&&!x.simulated);
+ const f=currentFlights().find(x=>(x.flight||x.callsign)===cs);
  if(f)return f.onGround?'On the ground':`In the air · ${fmt(f.altitude,'alt')} ${unit('alt')}`;
  const w=collection.data.watch[cs];if(!w?.status)return null;
  if(w.status==='airborne')return `In the air · ${fmt(w.alt,'alt')} ${unit('alt')}`;
@@ -192,21 +188,21 @@ function renderDetail(){
  const isAirlineFlight=/^[A-Z]{3}\d/.test(cs),savedFlight=collection.flight(cs),savedAircraft=collection.aircraft(f.id);
  let content='';
  if(state.tab==='overview')content=`${photoHTML()}<div class="metric-grid">${metric('Altitude',f.altitude,'alt','altitude','altitude',f.onGround?'On ground':'Barometric')}${metric('Ground speed',f.groundSpeed,'speed','groundSpeed','speed','')}${metric('Vertical speed',f.verticalRate,'vertical','verticalRate','vertical',vsNote(f.verticalRate))}${metric('Track',f.track,'°','track','heading','')}</div><div id="altitude-chart">${chart(f)}</div>`;
- else if(state.tab==='aircraft'){const a=info.aircraft,reg=f.registration||a?.registration;content=`${photoHTML()}<h3>${e(t.exact||!f.description?spec.name:f.description)}</h3><p class="fact-note">${e(t.exact?familyText(spec):'Type not reported')}</p><dl class="fact-list">${row('Registration',reg||'Not reported')}${row('Type code',f.type||a?.icaoType||'Not reported')}${a?.type?row('Variant',a.type):''}${row('Operator',airlineName(f)||'Not reported')}${a?.owner&&a.owner!==airlineName(f)?row('Owner',a.owner):''}${a?.country?row('Registered in',a.country):''}${f.year?row('Built',f.year):''}${row('Length · span · height',`${spec.length} · ${spec.span} · ${spec.height} m`)}${row('Engines',engineText(spec))}${row('Mode S address',f.simulated?'Demo':f.id.toUpperCase())}</dl>${f.simulated?'':`<button class="secondary wide ${savedAircraft?'on':''}" data-action="save-aircraft">${icon('star')} ${savedAircraft?'Aircraft saved':'Save this aircraft'}${reg?' ('+e(reg)+')':''}</button>`}`;}
- else{const msl=altitudeMSL(f),dp=displayFlight(f),age=quality(f).age;content=`<dl class="fact-list">${row('Indicated airspeed',f.indicatedAirspeed==null?'Not reported':fmt(f.indicatedAirspeed,'speed')+' '+unit('speed'))}${row('True airspeed',f.trueAirspeed==null?'Not reported':fmt(f.trueAirspeed,'speed')+' '+unit('speed'))}${row('Mach',f.mach==null?'Not reported':f.mach.toFixed(3))}${row('GPS altitude',f.geometricAltitude==null?'Not reported':fmt(f.geometricAltitude,'alt')+' '+unit('alt'))}${row('Height above sea level',msl.metres===null?'Unknown':fmt(msl.metres/FT,'alt')+' '+unit('alt')+' ('+msl.basis+')')}${row('Autopilot altitude',f.navAltitude==null?'Not reported':fmt(f.navAltitude,'alt')+' '+unit('alt'))}${row('Autopilot heading',f.navHeading==null?'Not reported':Math.round(f.navHeading)+'°')}${row('QNH',f.navQnh==null?'Not reported':f.navQnh.toFixed(1)+' hPa')}${row('Wind',f.windDirection==null||f.windSpeed==null?'Not reported':`${Math.round(f.windDirection)}° at ${fmt(f.windSpeed,'speed')} ${unit('speed')}`)}${row('Outside air',f.outsideTemp==null?'Not reported':f.outsideTemp+' °C')}${row('Heading',f.trueHeading==null?'Not reported':Math.round(f.trueHeading)+'°')}${row('Roll',f.roll==null?'Not reported':f.roll.toFixed(1)+'°')}${row('Squawk',f.squawk?(f.squawk+(f.emergency?' · '+f.emergency:'')):'Not reported')}${row('Position',dp.lat.toFixed(4)+', '+dp.lon.toFixed(4))}${row('Accuracy',nacpText(f.nacp))}${row('Source',f.simulated?'Demo':f.source+' · '+(f.providers||[f.provider]).filter(Boolean).join(', '))}${row('Last report',f.simulated?'Demo':age.toFixed(1)+' s ago')}</dl>${f.simulated?'':`<button class="secondary wide" style="margin-top:16px" data-action="export">${icon('download')} Export track (CSV)</button>`}`;}
- const status=f.emergency?f.emergency.toUpperCase():f.simulated?'DEMO':quality(f).status==='Recent'?'LIVE':quality(f).status.toUpperCase();
+ else if(state.tab==='aircraft'){const a=info.aircraft,reg=f.registration||a?.registration;content=`${photoHTML()}<h3>${e(t.exact||!f.description?spec.name:f.description)}</h3><p class="fact-note">${e(t.exact?familyText(spec):'Type not reported')}</p><dl class="fact-list">${row('Registration',reg||'Not reported')}${row('Type code',f.type||a?.icaoType||'Not reported')}${a?.type?row('Variant',a.type):''}${row('Operator',airlineName(f)||'Not reported')}${a?.owner&&a.owner!==airlineName(f)?row('Owner',a.owner):''}${a?.country?row('Registered in',a.country):''}${f.year?row('Built',f.year):''}${row('Length · span · height',`${spec.length} · ${spec.span} · ${spec.height} m`)}${row('Engines',engineText(spec))}${row('Mode S address',f.id.toUpperCase())}</dl>${`<button class="secondary wide ${savedAircraft?'on':''}" data-action="save-aircraft">${icon('star')} ${savedAircraft?'Aircraft saved':'Save this aircraft'}${reg?' ('+e(reg)+')':''}</button>`}`;}
+ else{const msl=altitudeMSL(f),dp=displayFlight(f),age=quality(f).age;content=`<dl class="fact-list">${row('Indicated airspeed',f.indicatedAirspeed==null?'Not reported':fmt(f.indicatedAirspeed,'speed')+' '+unit('speed'))}${row('True airspeed',f.trueAirspeed==null?'Not reported':fmt(f.trueAirspeed,'speed')+' '+unit('speed'))}${row('Mach',f.mach==null?'Not reported':f.mach.toFixed(3))}${row('GPS altitude',f.geometricAltitude==null?'Not reported':fmt(f.geometricAltitude,'alt')+' '+unit('alt'))}${row('Height above sea level',msl.metres===null?'Unknown':fmt(msl.metres/FT,'alt')+' '+unit('alt')+' ('+msl.basis+')')}${row('Autopilot altitude',f.navAltitude==null?'Not reported':fmt(f.navAltitude,'alt')+' '+unit('alt'))}${row('Autopilot heading',f.navHeading==null?'Not reported':Math.round(f.navHeading)+'°')}${row('QNH',f.navQnh==null?'Not reported':f.navQnh.toFixed(1)+' hPa')}${row('Wind',f.windDirection==null||f.windSpeed==null?'Not reported':`${Math.round(f.windDirection)}° at ${fmt(f.windSpeed,'speed')} ${unit('speed')}`)}${row('Outside air',f.outsideTemp==null?'Not reported':f.outsideTemp+' °C')}${row('Heading',f.trueHeading==null?'Not reported':Math.round(f.trueHeading)+'°')}${row('Roll',f.roll==null?'Not reported':f.roll.toFixed(1)+'°')}${row('Squawk',f.squawk?(f.squawk+(f.emergency?' · '+f.emergency:'')):'Not reported')}${row('Position',dp.lat.toFixed(4)+', '+dp.lon.toFixed(4))}${row('Accuracy',nacpText(f.nacp))}${row('Source',f.source+' · '+(f.providers||[f.provider]).filter(Boolean).join(', '))}${row('Last report',age.toFixed(1)+' s ago')}</dl>${`<button class="secondary wide" style="margin-top:16px" data-action="export">${icon('download')} Export track (CSV)</button>`}`;}
+ const status=f.emergency?f.emergency.toUpperCase():quality(f).status==='Recent'?'LIVE':quality(f).status.toUpperCase();
  const sub=[isAirlineFlight&&flightNumber(cs)?cs:null,airlineName(f)||f.registration].filter(Boolean).join(' · ');
- d.innerHTML=`<div class="detail-inner"><div class="detail-caption"><span class="tag ${f.emergency?'alert':''}">${e(status)}</span><span class="caption-age" id="detail-data-status">${e(f.simulated?'Demo traffic':ago(quality(f).age))}</span><button class="iconbutton" data-action="deselect" aria-label="Close flight">${icon('close')}</button></div>
+ d.innerHTML=`<div class="detail-inner"><div class="detail-caption"><span class="tag ${f.emergency?'alert':''}">${e(status)}</span><span class="caption-age" id="detail-data-status">${e(ago(quality(f).age))}</span><button class="iconbutton" data-action="deselect" aria-label="Close flight">${icon('close')}</button></div>
 <div class="airline-row"><span class="airline-monogram">${e((airlineFor(cs)?.iata||cs).slice(0,2))}</span><div class="flight-heading"><h2>${e(titleOf(f))}</h2><p>${e(sub||'Unknown operator')}</p></div></div>
-${f.simulated?'':`<div class="action-row"><button class="secondary ${(isAirlineFlight?savedFlight:savedAircraft)?'on':''}" data-action="save-flight" aria-pressed="${Boolean(isAirlineFlight?savedFlight:savedAircraft)}">${icon('star')}${(isAirlineFlight?savedFlight:savedAircraft)?'Saved':'Save'}</button>${isAirlineFlight?`<button class="secondary ${savedFlight&&savedFlight.alerts!=='off'?'on':''}" data-action="notify-flight">${icon('bell')}Alerts</button><button class="secondary" data-action="add-to-trip">${icon('trip')}Trip</button>`:''}</div>`}
+${`<div class="action-row"><button class="secondary ${(isAirlineFlight?savedFlight:savedAircraft)?'on':''}" data-action="save-flight" aria-pressed="${Boolean(isAirlineFlight?savedFlight:savedAircraft)}">${icon('star')}${(isAirlineFlight?savedFlight:savedAircraft)?'Saved':'Save'}</button>${isAirlineFlight?`<button class="secondary ${savedFlight&&savedFlight.alerts!=='off'?'on':''}" data-action="notify-flight">${icon('bell')}Alerts</button><button class="secondary" data-action="add-to-trip">${icon('trip')}Trip</button>`:''}</div>`}
 <div class="route-card">${routeHTML(f)}<div class="route-status"><span class="phase"><span class="dot"></span><span id="flight-phase">${phase(f)}</span></span></div></div>
 <button class="view-card" data-action="3d" aria-label="View ${e(titleOf(f))} in 3D"><span class="view-label"><strong>View in 3D</strong><small>Follow, orbit or cockpit</small></span>${planeSVG}<span class="view-arrow">${icon('arrow')}</span></button>
 <div class="detail-tabs" role="tablist">${['overview','aircraft','telemetry'].map(x=>`<button role="tab" aria-selected="${state.tab===x}" class="${state.tab===x?'active':''}" data-tab="${x}">${x[0].toUpperCase()+x.slice(1)}</button>`).join('')}</div><div role="tabpanel">${content}</div></div>`;
  $('#mobile-flight-name').textContent=titleOf(f);$('#scene-callsign').textContent=titleOf(f)+' · '+spec.name;
 }
 function exploreHTML(){
- const flying=collection.data.flights.map(item=>({item,f:currentFlights().find(x=>(x.flight||x.callsign)===item.callsign&&!x.simulated)})).filter(x=>(x.f&&!x.f.onGround)||(!x.f&&collection.data.watch[x.item.callsign]?.status==='airborne'));
- return `<div class="detail-inner">${panelHead('Find a flight')}<p class="lead">Search for a flight number, airline, aircraft type, registration or airport. Or tap a plane on the map.</p><div class="examples">${['SQ 22','Lufthansa','A380','9V-SMU','Changi'].map(x=>`<button class="chip" data-example="${e(x)}">${e(x)}</button>`).join('')}</div>${flying.length?`<div class="section-sub">YOUR FLIGHTS IN THE AIR</div>${flying.map(({item,f})=>f?flightRow(f):`<button class="flight-list-item" data-saved-flight="${e(item.callsign)}"><span class="airline-monogram">${e(item.label.slice(0,2))}</span><span><strong>${e(item.label)}</strong><small>${e(savedFlightStatus(item))}</small></span>${icon('arrow')}</button>`).join('')}`:''}${state.mode==='demo'&&!canLive()?`<div class="notice"><strong>Showing demo traffic.</strong><br>Web browsers cannot read the live flight feeds. Install the Aeris app on iPhone or Android, or add a data proxy, to see real aircraft.<br><button class="small-link" data-action="connect">Data sources →</button></div>`:''}</div>`;
+ const flying=collection.data.flights.map(item=>({item,f:currentFlights().find(x=>(x.flight||x.callsign)===item.callsign)})).filter(x=>(x.f&&!x.f.onGround)||(!x.f&&collection.data.watch[x.item.callsign]?.status==='airborne'));
+ return `<div class="detail-inner">${panelHead('Find a flight')}<p class="lead">Search for a flight number, airline, aircraft type, registration or airport. Or tap a plane on the map.</p><div class="examples">${['SQ 22','Lufthansa','A380','9V-SMU','Changi'].map(x=>`<button class="chip" data-example="${e(x)}">${e(x)}</button>`).join('')}</div>${flying.length?`<div class="section-sub">YOUR FLIGHTS IN THE AIR</div>${flying.map(({item,f})=>f?flightRow(f):`<button class="flight-list-item" data-saved-flight="${e(item.callsign)}"><span class="airline-monogram">${e(item.label.slice(0,2))}</span><span><strong>${e(item.label)}</strong><small>${e(savedFlightStatus(item))}</small></span>${icon('arrow')}</button>`).join('')}`:''}${liveProblem()?`<div class="notice"><strong>${e(liveProblem().title)}</strong><br>${e(liveProblem().short)}<br><button class="small-link" data-action="connect">Sources →</button></div>`:''}</div>`;
 }
 function savedHTML(){
  const c=collection.data;
@@ -225,13 +221,28 @@ function runwayPlan(a){
 function airportTraffic(a){return currentFlights().map(f=>({f,d:distance([a.lat,a.lon],[displayFlight(f).lat,displayFlight(f).lon])})).filter(({f,d})=>d<30000&&(f.onGround||(f.altitude??99999)<10000)).sort((x,y)=>x.d-y.d).slice(0,12).map(({f,d})=>flightRow(f,(f.onGround?'On ground':f.verticalRate<-300?'Arriving':f.verticalRate>300?'Departing':'Nearby')+` · ${(d/1000).toFixed(1)} km`)).join('');}
 function airportsHTML(){const near=nearestAirports(state.center.lat,state.center.lng,14,'LM');const saved=collection.data.airports;return `<div class="detail-inner">${panelHead('Airports')}<p class="lead">Nearest to the centre of the map. Search for any airport by name, city or code.</p>${saved.length?`<div class="section-sub">SAVED</div><div class="airport-list">${saved.map(a=>`<button class="airport-card" data-airport="${e(a.iata||a.icao)}"><span class="airport-code">${e(a.iata||a.icao)}</span><span><strong>${e(a.name)}</strong><small>${e(a.city)}</small></span>${icon('arrow')}</button>`).join('')}</div><div class="section-sub">NEARBY</div>`:''}<div class="airport-list">${near.map(a=>`<button class="airport-card" data-airport="${e(a.id)}"><span class="airport-code">${e(a.iata||a.icao)}</span><span><strong>${e(a.name)}</strong><small>${e(a.city||a.country)} · ${Math.round(a.distanceKm)} km</small></span>${icon('arrow')}</button>`).join('')}</div></div>`;}
 function airportHTML(a){const lt=localTime(a),traffic=airportTraffic(a),saved=collection.airport(a.icao);
- return `<div class="detail-inner"><div class="detail-caption"><button data-action="airports">${icon('back')} AIRPORTS</button><span>${e(a.icao)}</span></div><div class="airline-row"><div class="flight-heading"><h2>${e(a.name)}</h2><p>${e([a.city,a.country].filter(Boolean).join(' · '))} · ${e(a.iata||a.icao)}</p></div></div><div class="action-row"><button class="secondary ${saved?'on':''}" data-action="save-airport" aria-pressed="${Boolean(saved)}">${icon('star')}${saved?'Saved':'Save'}</button></div>${runwayPlan(a)}<div class="section-sub">TRAFFIC NOW · WITHIN 30 KM</div>${traffic||`<p class="fact-note">${state.mode==='live'?'No aircraft below 10,000 ft near this airport right now.':'Live traffic needs the Aeris app or a data proxy.'}</p>`}<dl class="fact-list">${row('ICAO / IATA',a.icao+' / '+(a.iata||'—'))}${row('Elevation',a.elevation==null?'Unknown':fmt(a.elevation,'alt')+' '+unit('alt'))}${row('Local time',lt?lt+' · '+a.tz:'Unknown')}</dl><div class="section-sub">RUNWAYS</div><dl class="fact-list">${a.runways.length?a.runways.map(r=>row(r.ident,r.length.toLocaleString('en-SG')+(r.width?' × '+r.width:'')+' m'+(r.surface?' · '+r.surface:''))).join(''):row('Runways','Not listed')}</dl>${a.website?`<a class="secondary wide" style="display:block;text-align:center;text-decoration:none;margin-top:18px" href="${e(a.website)}" target="_blank" rel="noreferrer">Airport website ↗</a>`:''}</div>`;}
+ return `<div class="detail-inner"><div class="detail-caption"><button data-action="airports">${icon('back')} AIRPORTS</button><span>${e(a.icao)}</span></div><div class="airline-row"><div class="flight-heading"><h2>${e(a.name)}</h2><p>${e([a.city,a.country].filter(Boolean).join(' · '))} · ${e(a.iata||a.icao)}</p></div></div><div class="action-row"><button class="secondary ${saved?'on':''}" data-action="save-airport" aria-pressed="${Boolean(saved)}">${icon('star')}${saved?'Saved':'Save'}</button></div>${runwayPlan(a)}<div class="section-sub">TRAFFIC NOW · WITHIN 30 KM</div>${traffic||`<p class="fact-note">${canLive()?'No aircraft below 10,000 ft near this airport right now.':e(liveProblem().short)}</p>`}<dl class="fact-list">${row('ICAO / IATA',a.icao+' / '+(a.iata||'—'))}${row('Elevation',a.elevation==null?'Unknown':fmt(a.elevation,'alt')+' '+unit('alt'))}${row('Local time',lt?lt+' · '+a.tz:'Unknown')}</dl><div class="section-sub">RUNWAYS</div><dl class="fact-list">${a.runways.length?a.runways.map(r=>row(r.ident,r.length.toLocaleString('en-SG')+(r.width?' × '+r.width:'')+' m'+(r.surface?' · '+r.surface:''))).join(''):row('Runways','Not listed')}</dl>${a.website?`<a class="secondary wide" style="display:block;text-align:center;text-decoration:none;margin-top:18px" href="${e(a.website)}" target="_blank" rel="noreferrer">Airport website ↗</a>`:''}</div>`;}
+/** Why live data is not reaching this screen, or null. Shown once as an alert, then quietly in Explore. */
+function liveProblem(){
+ if(!canLive())return {kind:'no-relay',title:'Live data is not available here',short:'This web page has no relay to the live flight feeds.',
+  body:'Web pages are not allowed to read the live flight feeds directly, and this copy of Aeris has no relay set up. The Aeris app for iPhone and Android, and the web app at shira421.github.io/aeris, show live flights.'};
+ const s=live.status();
+ if(s.live||!live.running)return null;
+ const offline=typeof navigator!=='undefined'&&navigator.onLine===false;
+ const failing=s.providers.filter(p=>p.enabled&&p.reachable).every(p=>p.fail>0&&p.state!=='ok');
+ if(!offline&&!(failing&&now()-startedAt>15))return null;
+ return {kind:offline?'offline':'unreachable',title:offline?'You are offline':'Live data cannot be reached',short:offline?'Aeris will update as soon as you are back online.':'Aeris keeps trying and will update by itself.',
+  body:offline?'Live flights need an internet connection. Aeris will update by itself as soon as you are back online.':'The live flight sources are not answering right now. Planes on the map fade when their data is old, and disappear after a minute. Aeris keeps trying and will update by itself.'};
+}
+let problemShown=false,problemNow=null;const startedAt=now();
+/** Keeps the inline status line in step, and alerts the first time live data is unavailable. */
 function renderSource(){
- const s=live.status(),pill=$('#source-pill');let label;
- if(state.mode==='demo')label='DEMO';
- else if(s.live){const age=Math.max(0,now()-(s.lastUpdate||now()));label=`LIVE<span class="pill-extra"> · ${age<10?age.toFixed(1):Math.round(age)} s</span>`;}
- else label=s.providers.some(p=>p.enabled&&p.reachable&&p.fail>0)?'RECONNECTING':'CONNECTING';
- $('#source-text').innerHTML=label;pill.classList.toggle('live',state.mode==='live'&&s.live);pill.classList.toggle('error',state.mode==='live'&&!s.live&&s.providers.some(p=>p.fail>2));
+ const p=liveProblem(),kind=p?.kind||null;
+ if(kind===problemNow)return;problemNow=kind;
+ $('#feed-error').textContent=p&&p.kind!=='no-relay'?`${p.title}. ${p.short}`:'';
+ if(p&&!problemShown){problemShown=true;try{if(sessionStorage.getItem('aeris-problem-'+p.kind))return;sessionStorage.setItem('aeris-problem-'+p.kind,'1');}catch{}
+  const show=()=>{if($('#dialog').open){setTimeout(show,1500);return;}openDialog(p.title,`<p>${e(p.body)}</p><div class="button-row"><button class="primary" data-action="close-dialog">OK</button><button class="secondary" data-action="connect">Sources</button></div>`);};show();}
+ if(!p&&state.nav==='explore'&&!state.selected)renderDetail();
 }
 function refresh(){renderNav();renderDetail();renderSource();pushMap(true);}
 
@@ -250,7 +261,7 @@ function tripFlightStatus(x){
  const diff=daysBetween(today(),x.date),h=historyFor(x.callsign,x.date);
  if(h)return {text:h.landedAt?`Flown · landed ${new Date(h.landedAt*1000).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',...(h.to?.tz?{timeZone:h.to.tz}:{})})}`:'Flown',cls:'done'};
  if(Math.abs(diff)<=1){
-  const f=currentFlights().find(y=>(y.flight||y.callsign)===x.callsign&&!y.simulated),w=collection.data.watch[x.callsign];
+  const f=currentFlights().find(y=>(y.flight||y.callsign)===x.callsign),w=collection.data.watch[x.callsign];
   if(f&&!f.onGround)return {text:`In the air · ${fmt(f.altitude,'alt')} ${unit('alt')}`,cls:'live'};
   if(w?.leg?.landed&&Math.abs(daysBetween(localDate(w.leg.start),x.date))<=1)return {text:`Landed at ${w.leg.at?.code||''}`,cls:'done'};
   if(w?.status==='airborne'&&now()-w.seen<900)return {text:`In the air · ${fmt(w.alt,'alt')} ${unit('alt')}`,cls:'live'};
@@ -318,7 +329,7 @@ async function openTrip(id){
  state.nav='trips';state.tripView='trip';state.trip=id;if(state.selected)deselect();renderNav();renderDetail();updatePlan(true);
  if(innerWidth<=800)$('.workspace').classList.add('detail-open');
  // Today's flights of the trip, wherever they are.
- const t=collection.trip(id);if(state.mode!=='live'||!t)return;
+ const t=collection.trip(id);if(!canLive()||!t)return;
  for(const x of t.flights.filter(x=>Math.abs(daysBetween(today(),x.date))<=1)){
   try{const f=(await live.query('callsign',x.callsign)).find(f=>f.lat!=null);if(f&&!live.get(f.id))live.add(f);}catch{}
  }
@@ -425,7 +436,7 @@ function onSearchInput(){
  state.search.q=$('#search').value.trim();state.search.results=null;$('.search-box').classList.toggle('has-text',Boolean(state.search.q));renderSearch();
  clearTimeout(searchTimer);const q=state.search.q,lookups=directLookups(q);
  // Anything that could name one aircraft is also looked up worldwide, unless it is already on the map.
- if(state.mode==='live'&&lookups.length&&!lookups.some(l=>currentFlights().some(f=>sameAs(f,l))))searchTimer=setTimeout(()=>remoteSearch(q,lookups,++searchSeq),300);
+ if(canLive()&&lookups.length&&!lookups.some(l=>currentFlights().some(f=>sameAs(f,l))))searchTimer=setTimeout(()=>remoteSearch(q,lookups,++searchSeq),300);
 }
 function sameAs(f,{kind,value}){return kind==='callsign'?(f.flight||f.callsign)===value:kind==='hex'?f.id===value:f.registration===value;}
 async function remoteSearch(q,lookups,seq){
@@ -455,11 +466,14 @@ $('#dialog').addEventListener('click',ev=>{if(ev.target===$('#dialog')){const r=
 const toggleRow=(key,label,note,on)=>`<label class="switch-row"><span>${label}${note?`<small>${note}</small>`:''}</span><input type="checkbox" data-setting="${key}" ${on?'checked':''}></label>`;
 function showMapOptions(){openDialog('Map',`<div class="source-buttons">${[['map','Map'],['satellite','Satellite'],['dark','Night'],['detail','Detailed']].map(([k,l])=>`<button class="${state.mapStyle===k?'active':''}" data-style="${k}">${l}</button>`).join('')}</div>${toggleRow('showGround','Aircraft on the ground','',state.showGround)}${toggleRow('altitudeColors','Colour by altitude','',map.altitudeColors)}${toggleRow('labels','Labels','Flight numbers and airport codes',map.labels)}${toggleRow('airports','Airports','',map.airports)}${toggleRow('trails','Flight trail','',map.trails)}${toggleRow('globe','Globe','Uses more battery',state.projection==='globe')}<div class="button-row"><button class="primary" data-action="close-dialog">Done</button><button class="secondary" data-action="settings">Settings</button></div>`);}
 async function showSettings(){const perm=await notificationPermission(false);openDialog('Settings',`<label class="form-field">Units<select id="units"><option value="aviation" ${state.units==='aviation'?'selected':''}>Feet, knots</option><option value="metric" ${state.units==='metric'?'selected':''}>Metres, km/h</option></select></label>${toggleRow('location','Show my location','A blue dot on the map',loadPref('location',false))}<div class="switch-row"><span>Notifications<small>${perm==='granted'?'Allowed':perm==='denied'?'Blocked. Turn them on in your device settings.':perm==='unsupported'?'Not available in this browser. Use the Aeris app.':'Not asked yet'}</small></span>${perm==='default'?'<button class="secondary" data-action="ask-notifications">Allow</button>':''}</div><div class="button-row"><button class="secondary" data-action="connect">Data sources</button><button class="secondary" data-action="about">About the data</button></div><div class="button-row"><button class="primary wide" data-action="save-settings">Save</button></div>`);}
-function environmentText(){const b=bridge();if(b)return `${b==='ios'?'iPhone/iPad':'Android'} app: all sources are available.`;if(getProxy())return `Browser, through the proxy at ${getProxy()}.`;return 'Browser: the live feeds do not allow web pages to read them. Use the Aeris app, or add a proxy below.';}
+function environmentText(){const b=bridge();if(b)return `The ${b==='ios'?'iPhone and iPad':'Android'} app reads the live feeds directly.`;if(getProxy())return `This web app reads the live feeds through the Aeris relay (${new URL(getProxy()).host}).`;return liveProblem().body;}
 function showConnect(){
- const s=live.status();const rows=s.providers.map(p=>{const def=PROVIDERS.find(x=>x.id===p.id);const st=!p.reachable?'Needs the app or a proxy':p.state==='ok'?`${p.ms} ms · ${p.aircraft} aircraft · ${ago(now()-p.lastOk)}`:p.state==='idle'?'Standby':p.state==='limited'?'Rate limited, pausing':p.state==='refused'?'Refused this network':p.state==='blocked'?'Blocked by the browser':p.error||'Error';
+ const s=live.status(),p=liveProblem();
+ const head=p?`<div class="notice"><strong>${e(p.title)}</strong><br>${e(p.short)}</div>`:s.live?`<p class="status-now"><span class="live-dot"></span>Live · updated ${e(ago(Math.max(0,now()-(s.lastUpdate||now()))))} · ${s.aircraft} aircraft in view</p>`:'<p class="status-now">Connecting…</p>';
+ const rows=s.providers.map(p=>{const def=PROVIDERS.find(x=>x.id===p.id);const st=!p.reachable?'Not available here':p.state==='ok'?`${p.ms} ms · ${p.aircraft} aircraft · ${ago(now()-p.lastOk)}`:p.state==='idle'?'Standby':p.state==='limited'?'Busy, pausing for a moment':p.state==='refused'?'Refuses this network':p.state==='blocked'?'Blocked by the browser':p.error||'Error';
   return `<label class="switch-row"><span>${e(def.name)}<small>${e(st)}${p.credits!=null?' · '+p.credits+' credits left today':''}</small></span><input type="checkbox" data-provider="${p.id}" ${p.enabled?'checked':''}></label>`;}).join('');
- openDialog('Data sources',`<p>${e(environmentText())}</p>${rows}<label class="form-field">Proxy URL (browsers only)<input id="proxy" type="url" value="${e(loadPref('proxy','')||'')}" placeholder="https://your-proxy.workers.dev/" spellcheck="false"></label><div class="form-error" id="connection-error"></div><div class="button-row"><button class="primary" data-action="save-proxy">Save</button><a class="secondary" href="https://github.com/shira421/aeris#install-on-iphone-or-ipad" target="_blank" rel="noreferrer" style="text-decoration:none;display:inline-flex;align-items:center">Get the app ↗</a></div>`);
+ const relay=bridge()?'':`<details class="advanced"${canLive()?'':' open'}><summary>Relay for self-hosted copies</summary><label class="form-field">Relay URL<input id="proxy" type="url" value="${e(loadPref('proxy','')||'')}" placeholder="https://aeris-proxy.example.workers.dev/" spellcheck="false"></label><div class="form-error" id="connection-error"></div><div class="button-row"><button class="primary" data-action="save-proxy">Save</button></div></details>`;
+ openDialog('Sources',`${head}<p>${e(environmentText())}</p>${rows}${relay}<div class="button-row"><button class="secondary" data-action="about">About the data</button></div>`);
 }
 function showAbout(){openDialog('About the data',`<p><strong>Positions</strong> come from community receiver networks: adsb.lol, adsb.fi, airplanes.live and OpenSky. The area on screen refreshes about once a second. Between updates, planes move along their reported track for up to ${LIMITS.extrapolate} seconds. Faded planes have not reported for ${LIMITS.stale} seconds. Coverage is thin over oceans and remote areas.</p><p><strong>Routes</strong> come from adsbdb and hexdb. Aeris hides a route if the plane is not on it. <strong>Aircraft details</strong> come from adsbdb; photos from Planespotters.net.</p><p><strong>Map:</strong> OpenStreetMap through OpenFreeMap. Satellite: Esri. Terrain: AWS Terrain Tiles. Airports: OurAirports. Airlines: OpenFlights. 3D models are drawn from each type's published size, without airline colours.</p><ul class="link-list"><li><a href="https://adsb.lol" target="_blank" rel="noreferrer">adsb.lol (ODbL)</a></li><li><a href="https://adsb.fi" target="_blank" rel="noreferrer">adsb.fi</a></li><li><a href="https://airplanes.live" target="_blank" rel="noreferrer">airplanes.live</a></li><li><a href="https://opensky-network.org" target="_blank" rel="noreferrer">OpenSky Network</a></li><li><a href="https://www.adsbdb.com" target="_blank" rel="noreferrer">adsbdb</a></li><li><a href="https://www.planespotters.net" target="_blank" rel="noreferrer">Planespotters.net</a></li><li><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a></li><li><a href="https://openflights.org/data" target="_blank" rel="noreferrer">OpenFlights (ODbL)</a></li><li><a href="https://ourairports.com/data/" target="_blank" rel="noreferrer">OurAirports</a></li></ul>`);}
 const definitions={altitude:['Altitude','Pressure altitude, the number pilots and air traffic control use. It can differ from height above sea level. The Telemetry tab shows both.'],groundSpeed:['Ground speed','Speed over the ground. Wind makes it differ from airspeed.'],verticalRate:['Vertical speed','How fast the plane is climbing or descending.'],track:['Track','The direction the plane is moving over the ground, from true north.']};
@@ -471,7 +485,7 @@ async function locateMe(center=true,quiet=false){
 // ——— 3D ———
 function openScene(camera='chase'){
  const f=selected();if(!f){toast('Select a plane first.');return false;}
- if(!(f.simulated||f.onGround||f.altitude!==null||f.geometricAltitude!==null)){toast('This plane reports no altitude, so it cannot be shown in 3D.');return false;}
+ if(!(f.onGround||f.altitude!==null||f.geometricAltitude!==null)){toast('This plane reports no altitude, so it cannot be shown in 3D.');return false;}
  if(!map.ok){toast('3D needs WebGL, which this device does not have.');return false;}
  state.view3d=true;state.camera=camera;$('.workspace').classList.add('scene-mode');$('.workspace').classList.remove('detail-open');live.setFocusOnly(true);
  map.enter3D(displayFlight(f),{camera:camera==='model'?'chase':camera,style:state.mapStyle==='satellite'?null:'satellite'});setCamera(camera);return true;
@@ -515,7 +529,7 @@ const actions={
  'allow-location'(){savePref('locationAsked',true);closeDialog();locateMe(true);},
  'deny-location'(){savePref('locationAsked',true);savePref('location',false);closeDialog();},
  'save-settings'(){state.units=$('#units').value;savePref('units',state.units);closeDialog();refresh();},
- 'save-proxy'(){const v=$('#proxy').value.trim();if(v){try{parseEndpoint(v);}catch(err){$('#connection-error').textContent=err.message;return;}}savePref('proxy',v||null);setProxy(v||defaultProxy());closeDialog();if(canLive()&&state.mode==='demo'){state.mode='live';state.selected=null;live.start();watcher.start();refresh();toast('Live traffic on.');}else toast(v?'Proxy saved.':'Proxy removed.');},
+ 'save-proxy'(){const v=$('#proxy').value.trim();if(v){try{parseEndpoint(v);}catch(err){$('#connection-error').textContent=err.message;return;}}savePref('proxy',v||null);setProxy(v||defaultProxy());closeDialog();if(canLive()&&!live.running){live.start();watcher.start();}problemNow=undefined;refresh();toast(v?'Relay saved.':'Relay removed.');},
  export:exportTrack
 };
 document.addEventListener('click',ev=>{
@@ -559,27 +573,26 @@ $('#search').addEventListener('input',onSearchInput);
 $('#search').addEventListener('focus',()=>{if(!state.search.q)renderSearch();});
 $('#search').addEventListener('keydown',ev=>{if(ev.key==='Escape'){closeSearch();$('#search').blur();}if(ev.key==='Enter'){ev.preventDefault();$('#search-results button:not(.result-back)')?.click();}if(ev.key==='ArrowDown'){ev.preventDefault();$('#search-results button')?.focus();}});
 document.addEventListener('keydown',ev=>{if(['INPUT','TEXTAREA','SELECT'].includes(ev.target.tagName))return;if(ev.key==='/'&&!$('#dialog').open){ev.preventDefault();$('#search').focus();}if(ev.key==='Escape'&&!$('#dialog').open){if(state.view3d)closeScene();else if(state.selected)deselect();$('.workspace').classList.remove('detail-open');}});
-document.addEventListener('visibilitychange',()=>{pageVisible=!document.hidden;lastFrame=performance.now();live.setPaused(document.hidden);if(document.hidden)syncWatch();else{if(state.mode==='live')watcher.check();if(loadPref('location',false))locateMe(false,true);}});
+document.addEventListener('visibilitychange',()=>{pageVisible=!document.hidden;lastFrame=performance.now();live.setPaused(document.hidden);if(document.hidden)syncWatch();else{if(canLive())watcher.check();if(loadPref('location',false))locateMe(false,true);}});
 
 function animate(t){
  const dt=lastFrame?Math.min((t-lastFrame)/1000,.1):0;lastFrame=t;
  if(pageVisible){
-  if(state.mode==='demo'){state.demoTime=(state.demoTime+dt)%DEMO_DURATION;state.flights=demoFlights(state.demoTime);}
   const f=selected();
   if(f){const d=displayFlight(f);if(state.view3d)map.update3D(d);if(state.view3d||t-lastSelected>100){map.setSelected(d,iconClass(f));lastSelected=t;}}
   pushMap();updateTrail();
   if(t-lastUI>500){lastUI=t;renderSource();
    if(f){if(state.nav==='explore'&&state.tab==='overview'){for(const [key,kind] of [['altitude','alt'],['groundSpeed','speed'],['verticalRate','vertical'],['track','°']]){const el=$(`[data-value="${key}"]`);if(el)el.innerHTML=fmt(f[key],kind,kind==='vertical'&&state.units==='metric'?1:0)+`<small>${unit(kind)}</small>`;}const n=$('[data-note="verticalRate"]');if(n)n.textContent=vsNote(f.verticalRate);if($('#flight-phase'))$('#flight-phase').textContent=phase(f);}
-    if($('#detail-data-status'))$('#detail-data-status').textContent=f.simulated?'Demo traffic':ago(quality(f).age);
-    if(state.view3d){const alt=map.lastAltitude;$('#scene-sub').textContent=[f.simulated?'Demo':quality(f).status==='Recent'?'Live':quality(f).status,alt?.metres!=null?`${fmt(alt.metres/FT,'alt')} ${unit('alt')} above sea level`:null].filter(Boolean).join(' · ');}}
-   else if(state.selected&&state.mode==='live'&&!live.get(state.selected)){toast('That plane is out of coverage now.');deselect();}}
+    if($('#detail-data-status'))$('#detail-data-status').textContent=ago(quality(f).age);
+    if(state.view3d){const alt=map.lastAltitude;$('#scene-sub').textContent=[quality(f).status==='Recent'?'Live':quality(f).status,alt?.metres!=null?`${fmt(alt.metres/FT,'alt')} ${unit('alt')} above sea level`:null].filter(Boolean).join(' · ');}}
+   else if(state.selected&&!live.get(state.selected)){toast('That plane is out of coverage now.');deselect();}}
   if(t-lastSlow>3000){lastSlow=t;if(state.mapFilter&&state.nav==='trips')live.setTracked(currentFlights().filter(x=>state.mapFilter.has(x.flight||x.callsign)).map(x=>x.id));if(f){updateRoute();if(state.nav==='explore'&&state.tab==='overview'&&$('#altitude-chart'))$('#altitude-chart').innerHTML=chart(f);}if(state.nav==='airports'&&state.airport)renderDetail();}
  }
  requestAnimationFrame(animate);
 }
 
 // ——— Start ———
-if(state.mode==='live'){live.start();watcher.start();}else state.selected=null;
+if(canLive()){live.start();watcher.start();}
 $('#map-credit').innerHTML=map.attribution?.()||'';
 refresh();requestAnimationFrame(animate);
 const selfTest=new URLSearchParams(location.search).has('selftest');
@@ -587,7 +600,7 @@ if(loadPref('location',false))locateMe(false,true);
 else if(selfTest&&bridge())locateMe(true,true);// simulator test: exercise the native location path without a tap
 else if(!loadPref('locationAsked',false)&&map.ok)setTimeout(()=>{if(!$('#dialog').open)showLocationPrompt();},900);
 // Read by the iOS/Android/browser smoke tests.
-window.__aerisSelfTest=()=>{const s=live.status();return {hidden:document.hidden,running:live.running,circles:live.circles.length,loaded:true,bridge:bridge(),mode:state.mode,map:map.ok,style:map.styleName,aircraft:state.mode==='live'?s.aircraft:state.flights.length,onMap:map.flightsData?.features?.length??0,source:$('#source-text')?.textContent,providers:s.providers.map(p=>({id:p.id,state:p.state,ms:p.ms,aircraft:p.aircraft,error:p.error})),selected:state.selected,view3d:state.view3d,saved:collection.count,me:Boolean(state.me),device:Boolean(window.webkit?.messageHandlers?.aerisDevice||window.AerisNative?.device),deviceTest:window.__aerisDeviceTest||null};};
+window.__aerisSelfTest=()=>{const s=live.status();return {hidden:document.hidden,running:live.running,circles:live.circles.length,loaded:true,bridge:bridge(),mode:canLive()?'live':'unavailable',map:map.ok,style:map.styleName,aircraft:state.mode==='live'?s.aircraft:state.flights.length,onMap:map.flightsData?.features?.length??0,source:liveProblem()?.kind||(s.live?'live':'connecting'),providers:s.providers.map(p=>({id:p.id,state:p.state,ms:p.ms,aircraft:p.aircraft,error:p.error})),selected:state.selected,view3d:state.view3d,saved:collection.count,me:Boolean(state.me),device:Boolean(window.webkit?.messageHandlers?.aerisDevice||window.AerisNative?.device),deviceTest:window.__aerisDeviceTest||null};};
 // Simulator test: turn alerts on for a live flight the way the Alerts button does, add it to a trip,
 // and check the app's background-check bridge answers. The CI step checks the app is still running after.
 if(selfTest&&bridge())setTimeout(async()=>{const r={step:'start'};window.__aerisDeviceTest=r;

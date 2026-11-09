@@ -1,0 +1,31 @@
+name: README media
+
+# Screenshots and GIFs of the real app with real live data, for the README.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['claude/**']
+    paths: ['scripts/capture-media.mjs', '.github/workflows/media.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Capture screenshots and GIFs (real feeds, map tiles and terrain)
+        run: node scripts/capture-media.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: readme-media
+          path: docs/media
+          retention-days: 14

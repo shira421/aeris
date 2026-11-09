@@ -21,6 +21,9 @@ jobs:
     timeout-minutes: 15
     outputs:
       version: ${{ steps.version.outputs.version }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -29,6 +32,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      # The released web app and standalone Aeris.html read live data through the Aeris relay
+      # (deployed by pages.yml). Its address is aeris-proxy.<your workers.dev subdomain>.
+      - name: Build the released web app against the Aeris relay
+        if: github.ref == 'refs/heads/main' && env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        run: |
+          sub=$(curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).result?.subdomain||''))") || true
+          if [ -n "$sub" ]; then AERIS_PROXY_URL="${{ vars.AERIS_PROXY_URL || '' }}"; AERIS_PROXY_URL="${AERIS_PROXY_URL:-https://aeris-proxy.$sub.workers.dev}" npm run build; else echo "::warning::Could not read the workers.dev subdomain; the released web app has no relay."; fi
       - id: version
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4

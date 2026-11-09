@@ -49,7 +49,7 @@ try{
   await routes(context);page=await context.newPage();
   page.on('pageerror',err=>errors.push(viewport.name+': '+err.message));
   page.on('console',msg=>{consoleLog.push(msg.type()+': '+msg.text().slice(0,300));if(msg.type()==='error'&&!/Failed to load resource|net::ERR_FAILED|AJAXError|Failed to fetch|NetworkError|tiles\.openfreemap|arcgisonline|elevation-tiles/i.test(msg.text()))errors.push(viewport.name+' console: '+msg.text());});
-  await step(viewport.name+': app loads in live mode through the proxy',async()=>{await page.goto(BASE+'/');await page.waitForFunction(()=>window.__aerisSelfTest?.().onMap>20,null,{timeout:25000});const s=await self();assert.equal(s.mode,'live');assert.ok(s.map,'map initialised');assert.match(s.source,/LIVE/);});
+  await step(viewport.name+': app loads in live mode through the proxy',async()=>{await page.goto(BASE+'/');await page.waitForFunction(()=>window.__aerisSelfTest?.().onMap>20,null,{timeout:25000});const s=await self();assert.equal(s.mode,'live');assert.ok(s.map,'map initialised');assert.equal(s.source,'live');});
   await step(viewport.name+': first open asks for location and shows the blue dot',async()=>{
    await page.waitForSelector('#dialog[open] [data-action="allow-location"]',{timeout:8000});assert.match(await page.textContent('#dialog'),/Show your location\?/);
    await page.click('#dialog [data-action="allow-location"]');await page.waitForFunction(()=>window.__aeris.state.me&&window.__aeris.map.meData?.features?.length===1&&Boolean(window.__aeris.map.map.getLayer('me')),null,{timeout:8000});
@@ -74,11 +74,9 @@ try{
    const controls=await page.evaluate(()=>{
     const detail=document.querySelector('#detail').getBoundingClientRect();
     const actions=[...document.querySelectorAll('.action-row button')].every(button=>{const r=button.getBoundingClientRect();return r.left>=detail.left&&r.right<=detail.right&&button.scrollWidth<=button.clientWidth;});
-    const label=document.querySelector('#source-text'),before=label.innerHTML;
-    const header=['LIVE','CONNECTING','RECONNECTING'].every(status=>{
-     label.textContent=status;const brand=document.querySelector('.brand').getBoundingClientRect(),nav=document.querySelector('.nav').getBoundingClientRect(),pill=document.querySelector('#source-pill').getBoundingClientRect();
-     return brand.right<=nav.left&&nav.right<=pill.left&&pill.right<=innerWidth;
-    });label.innerHTML=before;return {actions,header};
+    const brand=document.querySelector('.brand').getBoundingClientRect(),nav=document.querySelector('.nav').getBoundingClientRect(),sources=document.querySelector('#source-pill').getBoundingClientRect();
+    const header=brand.right<=nav.left&&nav.right<=sources.left&&sources.right<=innerWidth&&/Sources/.test(document.querySelector('#source-pill').textContent);
+    return {actions,header};
    });assert.deepEqual(controls,{actions:true,header:true},'phone controls remain visible and do not overlap');
    await page.screenshot({path:`qa/${viewport.name}-3d-button.png`});
    if(viewport.mobile)await page.setViewportSize({width:viewport.width,height:viewport.height});
@@ -155,7 +153,9 @@ try{
    if(viewport.mobile)await page.click('.mobile-detail-toggle');
    await page.click('[data-action="map-options"]');const dlg=await page.textContent('#dialog');assert.match(dlg,/Satellite/);assert.match(dlg,/Aircraft on the ground/);assert.match(dlg,/Globe/);
    await page.click('#dialog [data-style="satellite"]');await page.waitForFunction(()=>window.__aeris.state.mapStyle==='satellite');await page.click('#dialog [data-style="map"]');await page.click('#dialog [data-action="close-dialog"]');
-   await page.evaluate(()=>document.querySelector('#source-pill').click());const src=await page.textContent('#dialog');assert.match(src,/adsb\.lol/);assert.match(src,/through the proxy/);await page.click('#dialog [data-action="close-dialog"]');});
+   await page.evaluate(()=>document.querySelector('#source-pill').click());const src=await page.textContent('#dialog');assert.match(src,/adsb\.lol/);assert.match(src,/through the Aeris relay/);assert.match(src,/Live · updated/);
+   // No demo anywhere, and the button is a plain label.
+   assert.equal(await page.textContent('#source-pill'),'Sources');assert.doesNotMatch(await page.innerText('#app'),/\bdemo\b/i);await page.click('#dialog [data-action="close-dialog"]');});
   await step(viewport.name+': panning to a new region renders its planes promptly',async()=>{
    assert.equal(await page.evaluate(()=>window.__aeris.live.get('7c0001')),null,'the new region must not already be cached');
    const start=Date.now();await page.evaluate(()=>{window.__aeris.deselect();window.__aeris.map.map.jumpTo({center:[151.21,-33.87],zoom:8});});
@@ -207,4 +207,38 @@ try{
  assert.ok(providerHits['api.adsb.lol']>0&&providerHits['opendata.adsb.fi']>0,'both readsb providers polled: '+JSON.stringify(providerHits));
  assert.deepEqual(errors,[],'page errors:\n'+errors.join('\n'));
  console.log('PASS: browser test · proxy requests',proxyHits,JSON.stringify(providerHits));
+
+ // ——— Always live: no demo traffic. Without a relay, or when the sources fail, the user is told once. ———
+ {
+  const context=await browser.newContext({viewport:{width:1280,height:800}});
+  await context.addInitScript(()=>{try{localStorage.setItem('aeris-locationAsked','true');}catch{}});
+  const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await step('standalone file without a relay: one notice, an empty map, no demo traffic',async()=>{
+   await page.goto(new URL('../dist/Aeris.html',import.meta.url).href);
+   await page.waitForSelector('#dialog[open]',{timeout:15000});assert.match(await page.textContent('#dialog'),/Live data is not available here/);
+   await page.screenshot({path:'qa/no-relay.png'});
+   await page.click('#dialog [data-action="close-dialog"]');await page.waitForTimeout(1500);
+   const st=await page.evaluate(()=>window.__aerisSelfTest());assert.equal(st.mode,'unavailable');assert.equal(st.onMap,0);assert.equal(st.source,'no-relay');
+   assert.match(await page.textContent('#detail'),/no relay/);assert.doesNotMatch(await page.innerText('#app'),/\bdemo\b/i);
+   await page.reload();await page.waitForTimeout(3000);assert.equal(await page.evaluate(()=>document.querySelector('#dialog').open),false,'the notice is shown once');
+   assert.deepEqual(errors,[]);});
+  await context.close();
+ }
+ {
+  const context=await browser.newContext({viewport:{width:1280,height:800}});
+  await context.addInitScript(()=>{try{localStorage.setItem('aeris-locationAsked','true');}catch{}});
+  let failing=true;
+  await routes(context);// registered first, so the failing route below is asked first
+  await context.route('**/api/proxy?**',route=>failing?route.fulfill({status:502,contentType:'application/json',body:'{"error":"down"}'}):route.fallback());
+  const page=await context.newPage();
+  await step('sources failing: one notice and a status line; recovers by itself',async()=>{
+   await page.goto(BASE+'/');
+   await page.waitForFunction(()=>document.querySelector('#dialog').open&&/cannot be reached/.test(document.querySelector('#dialog').textContent),null,{timeout:45000});
+   assert.match(await page.textContent('#feed-error'),/cannot be reached/);await page.screenshot({path:'qa/sources-down.png'});
+   await page.click('#dialog [data-action="close-dialog"]');
+   failing=false;
+   await page.waitForFunction(()=>window.__aerisSelfTest().onMap>20&&document.querySelector('#feed-error').textContent==='',null,{timeout:60000});
+   assert.equal(await page.evaluate(()=>window.__aerisSelfTest().source),'live');});
+  await context.close();
+ }
 }finally{await browser.close();server.kill('SIGTERM');}

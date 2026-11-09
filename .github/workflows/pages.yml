@@ -32,13 +32,23 @@ jobs:
       - run: npm ci
       # Browsers cannot read public ADS-B feeds directly (no CORS headers). With these two
       # secrets set, a free Cloudflare Worker proxy is deployed and the web app uses it.
-      - name: Deploy the data proxy (only when Cloudflare secrets are set)
+      - name: Deploy the data relay (only when Cloudflare secrets are set)
         id: proxy
         if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
         run: |
-          out=$(npx --yes wrangler@4 deploy --config worker/wrangler.toml 2>&1) || { echo "$out"; exit 1; }
+          out=$(npx --yes wrangler@4 deploy --config worker/wrangler.toml 2>&1) || { echo "$out"; echo "::error::The relay could not be deployed. If the message mentions a workers.dev subdomain, open Workers & Pages in the Cloudflare dashboard once and run this workflow again."; exit 1; }
           echo "$out"
-          echo "url=$(echo "$out" | grep -oE 'https://[a-z0-9.-]+\.workers\.dev' | head -1)" >> "$GITHUB_OUTPUT"
+          url=$(echo "$out" | grep -oE 'https://[a-z0-9.-]+\.workers\.dev' | head -1)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          # The relay answers, with CORS headers for the Pages site, and live data comes through it.
+          for i in 1 2 3 4 5 6; do curl -fsS "$url/health" && break; sleep 5; done
+          code=$(curl -s -o /tmp/feed.json -w '%{http_code}' -H 'Origin: https://shira421.github.io' "$url/?url=https%3A%2F%2Fapi.adsb.lol%2Fv2%2Fpoint%2F51.47%2F-0.45%2F100")
+          echo "Relay test through adsb.lol: HTTP $code, $(grep -o '"hex"' /tmp/feed.json | wc -l) aircraft"
+          [ "$code" = 200 ] || echo "::warning::The relay is deployed but adsb.lol answered HTTP $code through it. The app switches to the other sources."
+      - name: Explain how to turn on live data for the web app
+        if: env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == ''
+        run: |
+          echo "::warning::The web app is built without a data relay, so browsers cannot show live flights (the feeds send no CORS headers). Add the repository secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID (see README, 'Web app: live data') and run this workflow again."
       - run: npm run build
         env:
           AERIS_PROXY_URL: ${{ steps.proxy.outputs.url || vars.AERIS_PROXY_URL }}
