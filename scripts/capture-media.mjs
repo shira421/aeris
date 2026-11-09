@@ -36,26 +36,30 @@ async function gif(page,name,{width=640,frames=24,every=350,during=null,delay=nu
  enc.finish();await save(name,Buffer.from(enc.bytes()));
 }
 const report={};
+// A region where it is daytime now, so the map is busy.
+const hour=new Date().getUTCHours();
+const REGION=hour<9?{name:'Singapore',center:[103.95,1.36],airport:[103.994,1.3502]}:hour<16?{name:'London',center:[-0.25,51.5],airport:[-0.4619,51.4706]}:{name:'New York',center:[-73.9,40.7],airport:[-73.7781,40.6413]};
+report.region=REGION.name;
 try{
  // ——— Desktop ———
  const context=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1});
  await context.addInitScript(()=>{try{localStorage.setItem('aeris-locationAsked','true');}catch{}});
  const page=await context.newPage();page.on('pageerror',e=>console.log('pageerror',e.message));
  await page.goto(BASE+'/');
- await page.evaluate(()=>window.__aeris.map.map.jumpTo({center:[-0.25,51.5],zoom:8.4}));
+ await page.evaluate(c=>window.__aeris.map.map.jumpTo({center:c,zoom:8.2}),REGION.center);
  const ready=await page.waitForFunction(()=>window.__aerisSelfTest().onMap>25,null,{timeout:90000}).then(()=>true,()=>false);
  console.log('state',JSON.stringify(await page.evaluate(()=>window.__aerisSelfTest())));
  if(!ready)throw new Error('No live aircraft on the map');
  await page.waitForFunction(()=>window.__aeris.map.map.areTilesLoaded(),null,{timeout:30000}).catch(()=>{});await wait(4000);
  await jpeg(page,'map.jpg');report.map=await page.evaluate(()=>window.__aerisSelfTest().onMap);
 
- // Live movement around Heathrow.
- await page.evaluate(()=>window.__aeris.map.map.jumpTo({center:[-0.43,51.47],zoom:10.2}));
+ // Live movement around the region's main airport.
+ await page.evaluate(c=>window.__aeris.map.map.jumpTo({center:c,zoom:9.6}),REGION.airport);
  await page.waitForFunction(()=>window.__aeris.map.map.areTilesLoaded(),null,{timeout:30000}).catch(()=>{});await wait(5000);
  await gif(page,'live.gif',{width:720,frames:28,every:300,delay:300});
 
  // A flight with a confirmed route: try airline flights on screen until one shows "km to go".
- await page.evaluate(()=>window.__aeris.map.map.jumpTo({center:[-0.3,51.5],zoom:8.4}));await wait(4000);
+ await page.evaluate(c=>window.__aeris.map.map.jumpTo({center:c,zoom:8.2}),REGION.center);await wait(4000);
  const ids=await page.evaluate(()=>{const b=window.__aeris.map.map.getBounds();return window.__aeris.live.list().filter(f=>/^[A-Z]{3}\d/.test(f.callsign)&&!f.onGround&&(f.altitude||0)>3000&&b.contains([f.lon,f.lat])).map(f=>f.id);});
  let chosen=null;
  for(const id of ids.slice(0,14)){
@@ -73,7 +77,7 @@ try{
  await page.evaluate(()=>window.__aeris.deselect());
 
  // Search by airline name, then jump to one of its flights anywhere in the world.
- await page.evaluate(()=>window.__aeris.map.map.jumpTo({center:[-0.3,51.5],zoom:6}));await wait(3000);
+ await page.evaluate(c=>window.__aeris.map.map.jumpTo({center:c,zoom:6}),REGION.center);await wait(3000);
  await gif(page,'search.gif',{width:720,frames:10,every:300,delay:300,during:async()=>{
   await page.click('#search');await page.type('#search','lufthansa',{delay:140});await wait(1200);
   await page.click('#search-results [data-airline="DLH"]');
