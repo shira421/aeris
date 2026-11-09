@@ -19,7 +19,9 @@ const browser=await chromium.launch({executablePath:chrome,headless:true,args:['
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const written=[];
 async function save(name,buffer){await writeFile(new URL(name,OUT),buffer);written.push([name,buffer]);console.log(`saved ${name} ${(buffer.length/1024).toFixed(0)} KB`);}
-const jpeg=async(page,name,opts={})=>save(name,await page.screenshot({type:'jpeg',quality:84,...opts}));
+// Every screenshot waits for the map tiles in view (a slow tile server otherwise leaves blank map).
+const tiles=page=>page.waitForFunction(()=>{const m=window.__aeris?.map?.map;return !m||m.areTilesLoaded();},null,{timeout:45000,polling:500}).catch(()=>console.log('tiles still loading'));
+const jpeg=async(page,name,opts={})=>{await tiles(page);await wait(800);await save(name,await page.screenshot({type:'jpeg',quality:84,...opts}));};
 /** A GIF from screenshots taken every `every` ms while `during` runs (and at least `min` frames). */
 async function gif(page,name,{width=640,frames=24,every=350,during=null,delay=null}={}){
  const shots=[];let done=!during;const job=during?during().finally(()=>{done=true;}):null;
