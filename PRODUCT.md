@@ -8,7 +8,7 @@ The map opens on Singapore the first time (or on your position, if you allow it)
 
 ## Acceptance boundaries
 
-| Requirement | Current status (v0.5.0) | Still to do |
+| Requirement | Current status (v1.0.0) | Still to do |
 |---|---|---|
 | Search | Flight numbers (IATA or ICAO), airline names/codes/callsigns (1,043 airlines), registrations, hex, aircraft families and types, airports; worldwide lookups; airline and type lists | Scheduled (not yet departed) flights, historical records |
 | Saved and alerts | Flights, aircraft and airports; alerts once per flight (take-off, in the air, descending into the destination, landing, emergency codes) for the next flight or every flight; only observed facts; background checks in the iOS and Android apps | Push from a server for exact timing; departure-gate and delay data |
@@ -25,7 +25,7 @@ The map opens on Singapore the first time (or on your position, if you allow it)
 - Visible observed/synthetic/stale/unknown state and source age.
 - Plain-language explanations of airspeed, ground speed, track and altitude.
 - Portable CSV exports that preserve timestamps and units.
-- Offline demo when no live source can be reached.
+- Always live: no demo traffic. When live data cannot be reached, say so once and keep trying.
 
 These features are useful differentiators for this design, not claims that no competitor offers them.
 

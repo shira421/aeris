@@ -272,5 +272,5 @@ jobs:
             echo "v$VERSION already published; its files stay unchanged. latest-build has this commit."
           else
             gh release create "v$VERSION" out/* --target "$GITHUB_SHA" --latest \
-              --title "Aeris v$VERSION" --notes-file .github/release-notes.md
+              --title "Aeris v$VERSION · Stable" --notes-file .github/release-notes.md
           fi

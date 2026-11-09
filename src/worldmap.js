@@ -84,9 +84,20 @@ export class WorldMap{
  }
  setProjection(p){this.projection=p;if(this.map&&this.styleLoaded())try{this.map.setProjection({type:p});}catch{}}
  /** Adds Aeris sources and layers to whatever base style is loaded. Called after every style change. */
+ /** Base-map labels in English or Latin script. The map fonts have no CJK, Thai or similar
+  glyphs, so local-script names would show as empty boxes. */
+ latinLabels(){
+  const m=this.map,ours=/^(flight|selected|airport|plan|trail|route|me)/,field=['coalesce',['get','name:en'],['get','name_en'],['get','name:latin'],['get','name_int'],['get','name']];
+  for(const layer of m.getStyle()?.layers||[]){
+   if(layer.type!=='symbol'||ours.test(layer.id))continue;
+   const tf=m.getLayoutProperty(layer.id,'text-field');
+   if(tf&&/name/.test(JSON.stringify(tf))&&!/housenumber|ref/.test(JSON.stringify(tf)))try{m.setLayoutProperty(layer.id,'text-field',field);}catch{}
+  }
+ }
  install(){
   const m=this.map;
   try{m.setProjection({type:this.mode==='map'?this.projection:'mercator'});}catch{}
+  try{this.latinLabels();}catch{}
   for(const [name,path] of Object.entries(SHAPES))if(!m.hasImage('ac-'+name))m.addImage('ac-'+name,ICONS[name]||(ICONS[name]=silhouette(path)),{sdf:true,pixelRatio:2});
   const hasGlyphs=Boolean(m.getStyle().glyphs);
   const src=(id,data,extra={})=>{if(!m.getSource(id))m.addSource(id,{type:'geojson',data,...extra});};

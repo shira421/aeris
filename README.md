@@ -1,77 +1,140 @@
-# Aeris
+<p align="center"><img src="public/icons/icon-180.png" width="72" alt=""></p>
+<h1 align="center">Aeris</h1>
+<p align="center"><b>A live flight tracker for iPhone, Android and the web.</b><br>Find any flight in the air, follow the people you care about, and keep a record of where you have flown.</p>
+<p align="center">
+<a href="https://github.com/shira421/aeris/releases/latest"><img alt="Latest stable release" src="https://img.shields.io/github/v/release/shira421/aeris?label=stable&color=204e51"></a>
+<a href="https://github.com/shira421/aeris/actions/workflows/release.yml"><img alt="Build" src="https://github.com/shira421/aeris/actions/workflows/release.yml/badge.svg?branch=main"></a>
+<a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-d96f49"></a>
+</p>
+<p align="center"><a href="#install"><b>Install</b></a> · <a href="https://shira421.github.io/aeris/"><b>Open the web app</b></a> · <a href="https://github.com/shira421/aeris/releases/latest">Release notes</a></p>
 
-A live flight tracker. Search for any flight in the air worldwide; save flights, aircraft and airports; plan trips with dated flights; keep a history of the flights you take; and get alerts when a flight takes off or lands. Live positions on an OpenStreetMap world map, with routes, airframe details and a 3D view over real terrain. Runs on iPhone, iPad, Android and desktop browsers. Original code; open data.
+![Aeris: live aircraft over Singapore](docs/media/map.jpg)
 
-## Install on iPhone or iPad
+<sub>All images on this page are the real app with real live data, captured automatically by [`scripts/capture-media.mjs`](scripts/capture-media.mjs).</sub>
 
-**Native app (recommended, full live data).** Download [`Aeris-iOS-unsigned.ipa`](https://github.com/shira421/aeris/releases/download/latest-build/Aeris-iOS-unsigned.ipa) and install it with [SideStore](https://sidestore.io), [AltStore](https://altstore.io) or [Sideloadly](https://sideloadly.io) using your Apple ID. A free Apple ID needs the app refreshed every 7 days. In AltStore or SideStore you can add this source for one-tap updates:
+## Features
 
-```
-https://github.com/shira421/aeris/releases/download/latest-build/altstore-source.json
-```
-
-**Home Screen web app (no tools).** Open [shira421.github.io/aeris](https://shira421.github.io/aeris/) in Safari → Share → Add to Home Screen. See [Live data](#live-data) for what the web app needs to show real aircraft.
-
-**Signed builds.** Add these repository secrets and every build also produces `Aeris-iOS-signed.ipa`: `IOS_CERTIFICATE_P12` (base64 .p12), `IOS_CERTIFICATE_PASSWORD`, `IOS_PROVISIONING_PROFILE` (base64 .mobileprovision), optionally `IOS_TEAM_ID` and `IOS_EXPORT_METHOD` (`development`, `ad-hoc` or `app-store`).
-
-**Android.** Download [`Aeris-Android.apk`](https://github.com/shira421/aeris/releases/download/latest-build/Aeris-Android.apk) and open it (Android 8+).
-
-Every push to `main` rebuilds everything in GitHub Actions and updates the `latest-build` release. Each new version in `package.json` also gets a permanent `v<version>` release.
-
-## Live data
-
-Positions come from community ADS-B networks: [adsb.lol](https://adsb.lol), [adsb.fi](https://adsb.fi), [airplanes.live](https://airplanes.live) and the [OpenSky Network](https://opensky-network.org). These services do not send CORS headers, so **a web page cannot read them directly**. Aeris gets around this in three ways:
-
-| Where Aeris runs | How it reaches the feeds |
+| | |
 |---|---|
-| iOS / Android app | Native requests through a small bridge (allowlisted hosts only) |
-| `npm start` on your computer | The local server's `/api/proxy` |
-| GitHub Pages web app | A Cloudflare Worker proxy you deploy (free tier), or the demo |
+| **Live, worldwide.** Positions from four community ADS-B networks, refreshed about once a second, smoothed between reports. A new area is fetched the moment you pan to it. | ![Live traffic moving around Changi](docs/media/live.gif) |
+| **Search first.** Type a flight number (`SQ 22`, `SIA22`), an airline (`lufthansa`, `speedbird`), a registration (`9V-SMU`), an aircraft type (`A380`, `dreamliner`) or an airport. A flight anywhere in the world appears in the results, and the map goes to it. | ![Searching for Lufthansa and jumping to one of its flights](docs/media/search.gif) |
+| **Every detail that is known.** Route checked against where the plane really is, progress and time to go, airframe and photo, and full telemetry. | ![Flight details](docs/media/flight.jpg) |
+| **3D over real terrain.** Follow, orbit or sit in the cockpit, with satellite imagery and elevation. | ![3D follow view](docs/media/3d.jpg) |
+| **Trips.** Group dated flights into a trip. The map shows its routes and only its planes; each flight gets alerts on its day. | ![A trip from London to Singapore and Tokyo](docs/media/trip.jpg) |
+| **Flight history.** Flights you take are logged after Aeris sees them land; past ones can be added by hand. Your year in flights, kilometres, airports and airlines. | ![Flight history with routes on the map](docs/media/history.jpg) |
 
-To give the Pages web app live data: create a Cloudflare API token (Workers edit permission) and add the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. The Pages workflow then deploys `worker/` and builds the site to use it. You can also paste any proxy URL in the app under Data sources.
+<p align="center"><img src="docs/media/phone-map.jpg" width="260" alt="Map on a phone">&nbsp;&nbsp;<img src="docs/media/phone-flight.jpg" width="260" alt="Flight details on a phone"></p>
 
-**How fresh is it?** The area on screen is refreshed about once a second, alternating sources so each stays within its published limit (1 request per second for adsb.fi and airplanes.live). Measured from GitHub's runners: 120–240 ms per request; positions typically 0.3–0.6 s old when served. Between reports Aeris dead-reckons along the reported track and turn rate for at most 20 s, blends corrections in smoothly, marks positions stale after 15 s and removes them after 60 s. Polling pauses when the app is in the background.
+**Alerts** for saved flights and trips: took off (from which airport), in the air, descending into the destination, landed (at which airport), emergency codes. Each is sent **once per flight** and states only what was observed: no guesses when a plane is out of coverage. Choose *Next flight*, or *Every flight* for someone who flies the same route regularly.
 
-**Coverage** depends on volunteer receivers. Busy regions are dense; oceans and remote areas can be empty. When you move the map to a new area, Aeris requests it straight away instead of waiting for the next cycle. OpenSky is used for airline lists and as a fallback when the other sources fail (anonymous use: 400 credits a day, tracked by the app).
+## Install
 
-## What it does
+| Platform | How | Live data |
+|---|---|---|
+| **iPhone / iPad** | Download [`Aeris-iOS-unsigned.ipa`](https://github.com/shira421/aeris/releases/latest/download/Aeris-iOS-unsigned.ipa) and install with [SideStore](https://sidestore.io), [AltStore](https://altstore.io) or [Sideloadly](https://sideloadly.io). A free Apple ID needs a refresh every 7 days. | Direct |
+| **Android 8+** | Download [`Aeris-Android.apk`](https://github.com/shira421/aeris/releases/latest/download/Aeris-Android.apk) and open it. | Direct |
+| **Web** | Open [shira421.github.io/aeris](https://shira421.github.io/aeris/). To install it: Safari → Share → *Add to Home Screen*, or Chrome → *Install app*. | Through the [Aeris relay](#web-app-live-data) |
 
-- **Search** is the main way around. It understands flight numbers (`SQ 22`, `SQ22`, `SIA22`), airline names, codes and radio callsigns (`Lufthansa`, `LH`, `DLH`, `Speedbird`), registrations (`9V-SMU`, `N123AB`), aircraft types and families (`A380`, `787`, `Dreamliner`) and airports (name, city, IATA or ICAO). Anything that names one aircraft is also looked up worldwide, so a flight on the other side of the world appears in the results and the map goes to it. An airline lists all its flights in the air (from OpenSky's worldwide list); an aircraft type lists every one flying.
-- **Saved:** flights (by flight number, so you can follow one before it departs), aircraft (by airframe) and airports.
-- **Alerts:** for a saved flight choose *Next flight* or *Every flight* (for someone who flies the same route regularly). Each alert is sent once per flight: take-off (with the airport it left), in the air (when first seen already flying), descending into the destination, landing (with the airport), and emergency transponder codes. Alerts state only what was observed; when a flight drops out of coverage Aeris says nothing rather than guess. The apps check every minute while open and every 15 minutes or more when closed (iOS and Android decide exactly when). Browsers alert only while the page is open.
-- **Trips:** a named set of flights with dates. Opening a trip shows its routes and only its planes on the map; on the day of each flight it gets alerts, and once flown it can go into your history.
-- **Flight history:** flights from your trips are added after Aeris sees them land, with the take-off and landing times it saw; past flights can be added by hand. The past year (or any year) in numbers: flights, kilometres, airports, airlines, and time in the air for tracked flights, with all the routes on the map.
-- **Your location:** on first open Aeris asks whether to show your position; the map then starts there.
-- **Map:** MapLibre GL with OpenFreeMap vector tiles (OpenStreetMap data), satellite imagery, a night style and an optional globe. Map style and display options are in one menu on the map's right-hand toolbar. Offline fallback to bundled Natural Earth geography.
-- **Aircraft:** GPU-drawn silhouettes by class, coloured by altitude, rotated to the ground track. Only the aircraft on screen are drawn; the update rate drops as the count rises.
-- **Details:** flight number and airline, route checked against the aircraft's actual position (mismatched database routes are hidden), progress and time to landing, airframe photo with credit, registration, operator, dimensions, and telemetry including autopilot targets, QNH, wind and position accuracy.
-- **Airports:** 6,045 airports from OurAirports with runways drawn to scale, local time and live traffic within 30 km.
-- **3D:** from the *View in 3D* card in a flight's details: follow, orbit or cockpit view over real terrain and satellite imagery, plus a close-up model view. While in 3D only the selected aircraft is fetched.
-- CSV export of a flight's track; feet/knots or metric units.
+The links above always point to the **latest stable release**. Builds of every commit are in the [`latest-build`](https://github.com/shira421/aeris/releases/tag/latest-build) pre-release; AltStore/SideStore can follow them with the source `https://github.com/shira421/aeris/releases/download/latest-build/altstore-source.json`.
 
-## Accuracy notes
+## How it works
 
-- Routes come from adsbdb and hexdb, which list the usual route for a callsign. They are often stale for re-used flight numbers, so Aeris only shows a route when the aircraft is within 15% of the route length (at least 150 km) of the great-circle path, between its ends, and heading towards the destination.
-- Pressure altitude is not height above sea level. The Telemetry tab shows both, with the basis used.
-- Attitude is estimated: heading from the reported track or true heading, pitch from vertical and ground speed, roll when reported. The 3D models are original and match published dimensions; liveries and exact airframes are not modelled.
-- Airport data is reference data, not operational status.
+```mermaid
+flowchart LR
+  subgraph Sources["Live sources (community ADS-B)"]
+    L[adsb.lol] ~~~ F[adsb.fi] ~~~ A[airplanes.live] ~~~ O[OpenSky]
+  end
+  subgraph Paths["How each version reaches them"]
+    N["iPhone / Android app<br/>native requests"]
+    R["Web app<br/>Aeris relay (Cloudflare Worker)"]
+  end
+  Sources --> N & R
+  N & R --> E["Live engine<br/>coverage circles · round-robin · back-off<br/>freshest report wins · smoothing"]
+  E --> M["Map<br/>MapLibre · OpenStreetMap"]
+  E --> D["Details<br/>routes: adsbdb, hexdb · photos: Planespotters"]
+  E --> W["Watcher<br/>alerts · trips · history"]
+  W -. "while closed" .-> B["iOS / Android background checks<br/>same rules"]
+```
+
+- **Fresh by design.** The area on screen is split into circles of up to 250 NM, each fetched about once a second, alternating between sources so each stays within its published rate limit. A source that refuses or rate-limits is paused and the others carry on. Measured in CI: 120–500 ms per request, positions 0.3–1.5 s old.
+- **Honest between updates.** Planes move along their reported track and turn rate for at most 20 s, fade when their data is 15 s old and disappear after a minute.
+- **Checked routes.** Route databases list the usual route for a flight number, which is often stale. Aeris shows a route only when the plane is on it.
+- **Always live.** There is no demo mode. If live data cannot be reached (offline, or a web copy without a relay), Aeris says so once and keeps trying.
+
+### Alerts, one leg at a time
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  [*] --> Watching: saved or in a trip
+  Watching --> OnGround: seen on the ground
+  OnGround --> Flying: seen airborne → "took off from SIN"
+  Watching --> Flying: first seen airborne → "is in the air"
+  Flying --> Flying: out of coverage and back (no alert)
+  Flying --> Descending: < 10,000 ft, < 60 km out → "descending into Newark"
+  Descending --> Landed: on the ground near an airport → "landed at EWR"
+  Landed --> OnGround: next flight (15+ min later)
+```
+
+Each alert kind is sent at most once per leg. The app and the phone's background checks share their state, so whichever sees an event first sends it and the other stays quiet. While Aeris is open it checks every minute; when closed, iOS and Android allow a check every 15 minutes or so.
+
+## Web app: live data
+
+Browsers may not read the live feeds directly (they send no CORS headers), so the web app reads them through a tiny relay, [`worker/worker.js`](worker/worker.js). It forwards GET requests to the flight-data hosts only, serves only the Aeris web app, and stores nothing. It runs on Cloudflare's free tier (100,000 requests a day).
+
+**One-time setup:** add two repository secrets, then push to `main` (or run *Deploy web app to GitHub Pages*):
+
+1. Create a free Cloudflare account and open **Workers & Pages** once (this creates your `workers.dev` address).
+2. **My Profile → API Tokens → Create Token → "Edit Cloudflare Workers"**, and copy the token.
+3. In GitHub, **Settings → Secrets and variables → Actions**, add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` (shown in the Workers & Pages overview).
+
+The Pages workflow then deploys the relay, checks that live data comes through it, and builds the site to use it. Release builds of the web app and the standalone `Aeris.html` use it too. Without the secrets the site still works and tells visitors once that live data is unavailable.
 
 ## Develop
 
 ```sh
 npm install
-npm start               # http://localhost:4173 with the live-data proxy
-npm test                # unit tests and server checks
-npm run test:browser    # headless Chrome at desktop and iPhone sizes, feeds mocked
-npm run test:live       # real providers, tiles, routes and 3D (needs internet)
-npm run test:android-rules   # Android's background alert rules give the same alerts as the web app (needs a JDK)
-npm run data            # rebuild airports and the geoid grid from their sources
-node scripts/build-airlines.mjs   # rebuild the airline list
-npm run models          # export GLB models for common types
+npm start                    # http://localhost:4173, with a local relay at /api/proxy
+npm test                     # unit tests (rules, search, live engine, relay) and server checks
+npm run test:browser         # headless Chrome, desktop and phone sizes, feeds mocked
+npm run test:live            # real feeds, tiles, routes and 3D (needs internet)
+npm run test:android-rules   # Android's alert rules match the web app's (needs a JDK)
+node scripts/capture-media.mjs   # the README images (needs internet)
 ```
 
-Layout: `src/live.js` (polling engine and worldwide lookups), `src/providers.js`, `src/net.js` (native bridge / proxy / fetch), `src/search.js` (what a query means: flight numbers, airlines, types, registrations), `src/collection.js` (saved items, trips, history and the alert rules), `src/rules.js` (the alert rules bundled for the iOS background check), `src/device.js` (location and notifications), `src/core.ts` (parsing, prediction, geodesy, route check), `src/worldmap.js` and `src/model-layer.js` (map and 3D), `src/types.js` and `src/aircraft.js` (type catalogue and models), `src/geo.js` (geoid), `src/airports.js`, `src/enrich.js`, `src/app.js` (UI). Native shells: `ios/` (XcodeGen, WKWebView; `DeviceBridge.swift` for location and notifications, `FlightWatcher.swift` for background checks running the web app's own rules in JavaScriptCore) and `android/` (`Rules.java`, a port of the rules checked against the web app by `npm run test:android-rules`, plus `FlightWatch.java` and `FlightCheckJob.java`). CI: `.github/workflows/`.
+<details>
+<summary>Project layout</summary>
+
+| Path | What |
+|---|---|
+| `src/app.js` | Interface |
+| `src/live.js`, `src/providers.js`, `src/net.js` | Live engine, sources, native bridge / relay / fetch |
+| `src/core.ts` | Parsing, prediction, geodesy, route check |
+| `src/search.js` | What a query means: flight numbers, airlines, types, registrations |
+| `src/collection.js`, `src/rules.js` | Saved items, trips, history, alert rules (and their bundle for iOS) |
+| `src/worldmap.js`, `src/model-layer.js`, `src/studio.js` | Map and 3D |
+| `src/airports.js`, `src/enrich.js`, `src/types.js`, `src/geo.js` | Airports, routes and photos, aircraft types, geoid |
+| `ios/` | XcodeGen project, WKWebView shell, location, notifications, background checks |
+| `android/` | WebView shell, location, notifications, background checks (`Rules.java`) |
+| `worker/` | The web app's relay |
+| `.github/workflows/` | Builds, tests, releases, Pages, provider probe, README media |
+
+Every push to `main` builds the iOS and Android apps and the web app, runs the tests (including the app in the iOS Simulator and an Android emulator), and updates `latest-build`. A new version number in `package.json` publishes a permanent release.
+</details>
+
+<details>
+<summary>Accuracy notes</summary>
+
+- Pressure altitude is not height above sea level. The Telemetry tab shows both, with the basis used (EGM96 geoid, QNH when reported).
+- Attitude in 3D is estimated: heading from track, pitch from vertical and ground speed, roll when reported. Models match published dimensions; liveries are not modelled.
+- Coverage depends on volunteer receivers: dense over land and busy regions, thin over oceans.
+- Airport data is reference data, not operational status.
+</details>
+
+## Privacy
+
+No account, no analytics. Saved flights, trips and history stay on your device. Your location is used only to place you on the map, and only if you allow it. The relay stores nothing.
 
 ## Licences and credits
 
-Application code, logo and models: MIT (`LICENSE`). Three.js r160 (MIT, vendored) and MapLibre GL JS (BSD-3-Clause). Map data © OpenStreetMap contributors via OpenFreeMap and OpenMapTiles; satellite imagery © Esri, Maxar, Earthstar Geographics and the GIS User Community; terrain from AWS Terrain Tiles. Airports: OurAirports (public domain) with time zones from mwgg/Airports (MIT). Airlines: OpenFlights (ODbL 1.0) with corrections. Geoid: NGA EGM96 (public domain) via OSGeo proj-datumgrid. Live data under each provider's terms (adsb.lol data is ODbL 1.0). Routes and airframes: adsbdb, hexdb. Photos: Planespotters.net, credited to each photographer. Offline geography: Natural Earth and DataMaps (`data/DATAMAPS-LICENSE.txt`).
+Code, logo and models: MIT ([`LICENSE`](LICENSE)). MapLibre GL JS (BSD-3-Clause), Three.js r160 (MIT, vendored). Map data © OpenStreetMap contributors via OpenFreeMap and OpenMapTiles; satellite imagery © Esri, Maxar, Earthstar Geographics and the GIS User Community; terrain: AWS Terrain Tiles. Live data under each provider's terms (adsb.lol: ODbL 1.0). Routes and airframes: adsbdb, hexdb. Photos: Planespotters.net, credited per photographer. Airports: OurAirports (public domain), time zones from mwgg/Airports (MIT). Airlines: OpenFlights (ODbL 1.0). Geoid: NGA EGM96 via OSGeo. Offline geography: Natural Earth and DataMaps.

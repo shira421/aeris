@@ -1,6 +1,6 @@
 {
   "name": "aeris-flight-explorer",
-  "version": "0.5.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Live flight tracker: find any flight worldwide, save flights, aircraft and airports, and get alerts.",

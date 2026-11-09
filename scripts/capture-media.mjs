@@ -1,6 +1,7 @@
 // Screenshots and GIFs for the README, from the real app with real live data (needs internet;
 // run in CI by .github/workflows/media.yml). Writes docs/media/ and also prints each file as
 // base64 chunks ("MEDIA name part/total data") so it can be recovered from the job log.
+// Map labels are Latin-script (see WorldMap.latinLabels), so world views show no empty boxes.
 import {chromium} from 'playwright-core';
 import {spawn} from 'node:child_process';
 import {existsSync} from 'node:fs';
