@@ -9,7 +9,7 @@
     "build": "node build.mjs",
     "pretest": "npm run build",
     "models": "node scripts/export-models.mjs",
-    "test": "node --test tests/core.test.mjs tests/search.test.mjs tests/alerts.test.mjs && node tests/server-smoke.mjs",
+    "test": "node --test tests/core.test.mjs tests/search.test.mjs tests/alerts.test.mjs tests/device.test.mjs tests/live.test.mjs && node tests/server-smoke.mjs",
     "icons": "node scripts/make-icons.mjs",
     "test:browser": "node tests/browser.mjs",
     "test:live": "node tests/live-smoke.mjs",

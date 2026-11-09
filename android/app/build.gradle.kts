@@ -4,6 +4,8 @@ plugins {
 
 dependencies {
     implementation("androidx.webkit:webkit:1.12.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }
 
 android {
@@ -16,6 +18,7 @@ android {
         targetSdk = 35
         versionCode = 5
         versionName = "0.5.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildFeatures {

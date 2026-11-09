@@ -18,6 +18,7 @@ const fleet=Array.from({length:60},(_,i)=>({hex:(0x76c000+i).toString(16),flight
  lat0:1.36+Math.sin(i*1.7)*1.4,lon0:103.99+Math.cos(i*2.3)*1.6,track:i===0?320:(i*37)%360,gs:i%10===8?110:i%10===9?120:430,alt:i===5?'ground':i%10===8?3500:i%10===9?1500:4000+((i*2300)%36000),rate:i%3?0:-800,trackRate:i===3?1.5:null}));
 // A flight far from the map view: only callsign/hex/registration lookups return it.
 const FAR={hex:'3c6444',type:'adsb_icao',flight:'DLH400  ',r:'D-AIXD',t:'A359',alt_baro:37000,alt_geom:37600,gs:480,track:290,baro_rate:0,lat:52.9,lon:-12.4,seen_pos:.5,seen:.3,category:'A5',squawk:'1000',messages:900,rssi:-22};
+const REGION={...FAR,hex:'7c0001',flight:'QFA100',lat:-33.87,lon:151.21};
 function aircraftAt(now){return fleet.map(a=>{const dt=now-t0,d=(a.gs*1852/3600)*dt/111320;const lat=a.lat0+d*Math.cos(a.track*Math.PI/180),lon=a.lon0+d*Math.sin(a.track*Math.PI/180)/Math.cos(a.lat0*Math.PI/180);
  return {hex:a.hex,type:'adsb_icao',flight:a.flight,r:a.r,t:a.t,alt_baro:a.alt,alt_geom:typeof a.alt==='number'?a.alt+150:undefined,gs:a.alt==='ground'?8:a.gs,track:a.track,track_rate:a.trackRate??undefined,baro_rate:a.rate,lat,lon,seen_pos:.4,seen:.2,nav_qnh:1011.2,ias:a.gs-140,tas:a.gs-10,mach:.78,wd:240,ws:31,oat:-41,nac_p:9,category:a.t==='EC35'?'A7':'A3',squawk:'2341',messages:1000,rssi:-20};});}
 let proxyHits=0;const providerHits={};
@@ -28,7 +29,7 @@ async function routes(context){
   else if(/\/hex\//.test(target.pathname)){const id=target.pathname.split('/').pop();body={ac:[...aircraftAt(now),FAR].filter(a=>a.hex===id),now:now*1000};}
   else if(/\/type\//.test(target.pathname)){const t=target.pathname.split('/').pop();body={ac:[...aircraftAt(now),FAR].filter(a=>a.t===t),now:now*1000};}
   else if(/callsign|reg/.test(target.pathname)){const q=decodeURIComponent(target.pathname.split('/').pop()).toUpperCase();body={ac:[...aircraftAt(now),FAR].filter(a=>a.flight.trim()===q||a.r===q),now:now*1000};}
-  else body={ac:aircraftAt(now),now:now*1000,msg:'No error'};
+  else {const lat=Number(target.pathname.match(/(?:lat|point)\/(-?[\d.]+)/)?.[1]);if(lat<-20)await new Promise(resolve=>setTimeout(resolve,250));body={ac:lat<-20?[REGION]:aircraftAt(now),now:now*1000,msg:'No error'};}
   await route.fulfill({status:200,contentType:'application/json',headers:{date:new Date().toUTCString()},body:JSON.stringify(body)});});
  await context.route('https://api.adsbdb.com/**',route=>{const u=new URL(route.request().url());
   if(u.pathname.includes('/callsign/SIA22'))return route.fulfill({status:200,contentType:'application/json',headers:{'access-control-allow-origin':'*'},body:JSON.stringify({response:{flightroute:{callsign:'SIA22',callsign_iata:'SQ22',airline:{name:'Singapore Airlines',icao:'SIA',iata:'SQ',country:'Singapore'},origin:{iata_code:'SIN',icao_code:'WSSS',name:'Singapore Changi Airport',municipality:'Singapore',country_name:'Singapore',latitude:1.35019,longitude:103.994},destination:{iata_code:'EWR',icao_code:'KEWR',name:'Newark Liberty International Airport',municipality:'Newark',country_name:'United States',latitude:40.6925,longitude:-74.1687}}}})});
@@ -63,6 +64,25 @@ try{
    await page.click('[data-tab="aircraft"]');assert.match(await page.textContent('#detail'),/Airbus A350-900/);assert.match(await page.textContent('#detail'),/9V-SMU/);
    await page.click('[data-tab="telemetry"]');const tel=await page.textContent('#detail');assert.match(tel,/QNH-corrected|geoid-corrected/);assert.match(tel,/240° at/);assert.match(tel,/< 30 m/);
    await page.click('[data-tab="overview"]');await page.screenshot({path:`qa/${viewport.name}-selected.png`});});
+  await step(viewport.name+': 3D button text fits beside its illustration',async()=>{
+   if(viewport.mobile){await page.setViewportSize({width:320,height:844});await page.evaluate(()=>document.querySelector('.workspace').classList.add('detail-open'));}
+   const layout=await page.locator('.view-card').evaluate(button=>{
+    const b=button.getBoundingClientRect(),text=button.querySelector('.view-label').getBoundingClientRect(),plane=button.querySelector('.preview-plane').getBoundingClientRect(),arrow=button.querySelector('.view-arrow').getBoundingClientRect();
+    const label=button.querySelector('.view-label');
+    return {fits:text.left>=b.left&&text.right<=plane.left&&text.bottom<=b.bottom&&plane.right<=arrow.left&&arrow.right<=b.right,overflow:label.scrollWidth>label.clientWidth};
+   });assert.ok(layout.fits);assert.equal(layout.overflow,false);
+   const controls=await page.evaluate(()=>{
+    const detail=document.querySelector('#detail').getBoundingClientRect();
+    const actions=[...document.querySelectorAll('.action-row button')].every(button=>{const r=button.getBoundingClientRect();return r.left>=detail.left&&r.right<=detail.right&&button.scrollWidth<=button.clientWidth;});
+    const label=document.querySelector('#source-text'),before=label.innerHTML;
+    const header=['LIVE','CONNECTING','RECONNECTING'].every(status=>{
+     label.textContent=status;const brand=document.querySelector('.brand').getBoundingClientRect(),nav=document.querySelector('.nav').getBoundingClientRect(),pill=document.querySelector('#source-pill').getBoundingClientRect();
+     return brand.right<=nav.left&&nav.right<=pill.left&&pill.right<=innerWidth;
+    });label.innerHTML=before;return {actions,header};
+   });assert.deepEqual(controls,{actions:true,header:true},'phone controls remain visible and do not overlap');
+   await page.screenshot({path:`qa/${viewport.name}-3d-button.png`});
+   if(viewport.mobile)await page.setViewportSize({width:viewport.width,height:viewport.height});
+  });
   await step(viewport.name+': real-world 3D view and camera modes',async()=>{
    if(viewport.mobile)await page.evaluate(()=>document.querySelector('.workspace').classList.add('detail-open'));
    await page.click('[data-action="3d"]');await page.waitForFunction(()=>window.__aerisSelfTest().view3d,null,{timeout:30000});await page.waitForTimeout(2500);
@@ -136,7 +156,53 @@ try{
    await page.click('[data-action="map-options"]');const dlg=await page.textContent('#dialog');assert.match(dlg,/Satellite/);assert.match(dlg,/Aircraft on the ground/);assert.match(dlg,/Globe/);
    await page.click('#dialog [data-style="satellite"]');await page.waitForFunction(()=>window.__aeris.state.mapStyle==='satellite');await page.click('#dialog [data-style="map"]');await page.click('#dialog [data-action="close-dialog"]');
    await page.evaluate(()=>document.querySelector('#source-pill').click());const src=await page.textContent('#dialog');assert.match(src,/adsb\.lol/);assert.match(src,/through the proxy/);await page.click('#dialog [data-action="close-dialog"]');});
+  await step(viewport.name+': panning to a new region renders its planes promptly',async()=>{
+   assert.equal(await page.evaluate(()=>window.__aeris.live.get('7c0001')),null,'the new region must not already be cached');
+   const start=Date.now();await page.evaluate(()=>{window.__aeris.deselect();window.__aeris.map.map.jumpTo({center:[151.21,-33.87],zoom:8});});
+   await page.waitForFunction(()=>window.__aeris.map.map.queryRenderedFeatures({layers:['flights']}).some(f=>f.properties.id==='7c0001'),null,{timeout:5000});
+   console.log(`new region visible in ${Date.now()-start} ms`);
+   await page.waitForFunction(()=>window.scrollX===0&&document.querySelector('.workspace').scrollLeft===0);
+   assert.equal(await page.evaluate(()=>document.querySelector('.topbar').getBoundingClientRect().left),0,'the hidden drawer must not shift the page sideways');
+   await page.screenshot({path:`qa/${viewport.name}-new-region.png`});
+  });
   await context.close();
+ }
+ // Exercise the UI through both native bridge contracts. The Android emulator suite separately
+ // covers the real OS scheduler/permission, which a mocked bridge cannot validate.
+ for(const platform of ['android','ios']){
+  const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});await routes(context);
+  await context.addInitScript(platform=>{
+   const calls=[];window.nativeTest={calls,failNext:false};
+   const net=async url=>{const direct=/api\.adsbdb\.com|hexdb\.io|api\.planespotters\.net/.test(new URL(url).host);const r=await fetch(direct?url:'/api/proxy?url='+encodeURIComponent(url));return {status:r.status,body:await r.text()};};
+   const device=async message=>{
+    calls.push(message);
+    if(message.action==='watch'){if(window.nativeTest.failNext&&message.items.length){window.nativeTest.failNext=false;throw Error('Scheduler unavailable');}window.nativeTest.saved=message.items;return true;}
+    if(message.action==='watchState')return [];
+    if(message.action==='notifyPermission')return 'granted';
+    if(message.action==='location')return {lat:1.3,lon:103.85,accuracy:40};
+    return true;
+   };
+   if(platform==='ios')window.webkit={messageHandlers:{aerisNet:{postMessage:message=>net(message.url)},aerisDevice:{postMessage:device}}};
+   else window.AerisNative={request:(id,url)=>net(url).then(reply=>window.__aerisNetReply(id,reply),e=>window.__aerisNetReply(id,{error:e.message})),device:(id,json)=>device(JSON.parse(json)).then(value=>window.__aerisNetReply(id,{value}),e=>window.__aerisNetReply(id,{error:e.message}))};
+  },platform);
+  page=await context.newPage();page.on('pageerror',e=>errors.push(platform+': '+e.message));
+  await step(platform+': alerts and trip saving survive a native watch failure',async()=>{
+   await page.goto(BASE+'/');await page.waitForFunction(()=>window.__aerisSelfTest?.().onMap>20);
+   await page.waitForSelector('#dialog[open] [data-action="deny-location"]');await page.click('#dialog [data-action="deny-location"]');
+   await page.evaluate(()=>{window.__aeris.selectFlight('76c000');document.querySelector('.workspace').classList.add('detail-open');window.nativeTest.failNext=true;});
+   await page.click('#detail [data-action="notify-flight"]');await page.click('#dialog [data-alert-mode="every"]');
+   await page.waitForFunction(()=>window.__aeris.collection.flight('SIA22')?.alerts==='every'&&window.nativeTest.failNext===false);
+   await page.waitForFunction(()=>document.querySelector('#toast').textContent.includes('Aeris will retry'));
+   // Repeat the same preference: failed snapshots must not be mistaken for acknowledged saves.
+   await page.click('#detail [data-action="notify-flight"]');await page.click('#dialog [data-alert-mode="every"]');
+   await page.waitForFunction(()=>window.nativeTest.saved?.some(x=>x.callsign==='SIA22'&&x.notify));
+   await page.evaluate(()=>window.__aeris.selectFlight('76c001'));
+   await page.click('#detail [data-action="add-to-trip"]');await page.fill('#att-name','Weekend');await page.click('#dialog button[type="submit"]');
+   await page.waitForFunction(()=>window.__aeris.collection.data.trips[0]?.flights.length===1&&window.nativeTest.saved?.some(x=>x.callsign==='AXM101'));
+   await page.screenshot({path:`qa/${platform}-trip-saved.png`});
+   await page.reload();await page.waitForFunction(()=>window.__aeris?.collection.data.trips[0]?.flights.length===1);
+   assert.equal(await page.evaluate(()=>window.__aeris.collection.flight('SIA22').alerts),'every');
+  });await context.close();
  }
  assert.ok(providerHits['api.adsb.lol']>0&&providerHits['opendata.adsb.fi']>0,'both readsb providers polled: '+JSON.stringify(providerHits));
  assert.deepEqual(errors,[],'page errors:\n'+errors.join('\n'));

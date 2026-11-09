@@ -63,7 +63,7 @@ export class WorldMap{
   // The viewport is known before any tiles load: start fetching aircraft immediately.
   setTimeout(()=>this.emitMove(),0);
   m.on('moveend',()=>{this.emitMove();writeView(m);});
-  let last=0;m.on('move',()=>{const t=performance.now();if(t-last>600){last=t;this.emitMove();}});
+  let last=0;m.on('move',()=>{const t=performance.now();if(t-last>(this.mode==='map'?150:600)){last=t;this.emitMove();}});
   m.on('click',e=>this.click(e));
   m.on('mousemove',e=>{if(this.mode!=='map')return;const hit=this.hit(e.point,12);m.getCanvas().style.cursor=hit?'pointer':'';});
   m.on('webglcontextlost',()=>onError?.('The map was paused by the device to save memory. It resumes when the page is visible again.'));
@@ -123,15 +123,17 @@ export class WorldMap{
   vis('flight-labels',this.labels);vis('trail',this.trails);for(const s of ['L','M','S']){vis('airport-'+s,this.airports);vis('airport-label-'+s,this.airports&&this.labels);}
   if(m.getLayer('flights'))m.setPaintProperty('flights','icon-color',this.altitudeColors?ALT_COLOR:'#3d7779');
  }
- /** Replace the aircraft layer. `list` holds display positions; the selected aircraft is drawn separately. */
- setFlights(list,selectedId,iconClassOf,staleOf){
+ /** Cull raw reports before predicting visible positions; the selected aircraft is drawn separately. */
+ setFlights(list,selectedId,iconClassOf,staleOf,positionOf=f=>f){
   if(!this.map)return;this.selected=selectedId;
   const b=this.map.getBounds(),pad=Math.max(2,(b.getNorth()-b.getSouth())*.15),wide=this.map.getZoom()<3;
   const features=[];
-  for(const f of list){if(f.id===selectedId)continue;
-   if(!wide&&(f.lat<b.getSouth()-pad||f.lat>b.getNorth()+pad||!lonIn(f.lon,b.getWest()-pad,b.getEast()+pad)))continue;
+  for(const report of list){if(report.id===selectedId)continue;
+   if(!wide&&(report.lat<b.getSouth()-pad||report.lat>b.getNorth()+pad||!lonIn(report.lon,b.getWest()-pad,b.getEast()+pad)))continue;
+   const f=positionOf(report);
    features.push({type:'Feature',id:f.id,properties:{id:f.id,cs:f.callsign,t:f.track??f.trueHeading??0,c:iconClassOf(f),a:f.onGround?-1:(f.altitude??f.geometricAltitude??-1),st:staleOf(f)?1:0},geometry:{type:'Point',coordinates:[f.lon,f.lat]}});}
   this.flightsData={type:'FeatureCollection',features};this.map.getSource('flights')?.setData(this.flightsData);
+  return features.length;
  }
  setSelected(f,iconClass){
   if(!this.map)return;const src=this.map.getSource('selected');

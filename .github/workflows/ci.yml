@@ -20,6 +20,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr-web-dist
+          path: dist
+          retention-days: 7
 
   browser:
     runs-on: ubuntu-latest
@@ -37,3 +42,69 @@ jobs:
       - name: Live services check (real providers, tiles and routes)
         continue-on-error: true
         run: npm run test:live
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-screenshots
+          path: qa/*.png
+          retention-days: 7
+
+  android:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: pr-web-dist
+          path: dist
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - run: node tests/android-rules.mjs
+      - name: Enable emulator acceleration
+        run: sudo chmod 666 /dev/kvm
+      - name: Android 15 watch-list regression tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          script: cd android && gradle :app:connectedDebugAndroidTest
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-test-results
+          path: android/app/build/reports/androidTests
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
+
+  ios:
+    needs: test
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: pr-web-dist
+          path: ios/web
+      - name: Build iOS simulator app
+        run: |
+          rm -f ios/web/Aeris.html
+          brew install xcodegen
+          cd ios && xcodegen generate
+          set -o pipefail
+          xcodebuild -project Aeris.xcodeproj -scheme Aeris -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath simbuild CODE_SIGNING_ALLOWED=NO build | tail -40

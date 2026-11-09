@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Callable;
 import org.json.JSONObject;
 
 public final class MainActivity extends Activity {
@@ -42,6 +43,8 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_NOTIFICATIONS = 2;
     private WebView webView;
     private final ExecutorService network = Executors.newFixedThreadPool(4);
+    // A slow traffic request must not delay watch-list acknowledgements or reorder native saves.
+    private final ExecutorService deviceWork = Executors.newSingleThreadExecutor();
     private final List<String> locationWaiting = new ArrayList<>();
     private final List<String> notifyWaiting = new ArrayList<>();
 
@@ -93,7 +96,7 @@ public final class MainActivity extends Activity {
                     if (connection != null) connection.disconnect();
                 }
                 final String script = "window.__aerisNetReply&&window.__aerisNetReply(" + JSONObject.quote(id) + "," + reply + ")";
-                webView.post(() -> { if (webView != null) webView.evaluateJavascript(script, null); });
+                runOnUiThread(() -> { if (webView != null) webView.evaluateJavascript(script, null); });
             });
         }
 
@@ -112,37 +115,54 @@ public final class MainActivity extends Activity {
             replyDevice(id, null, "Bad request");
             return;
         }
-        switch (message.optString("action")) {
-            case "location":
-                requestLocation(id);
-                break;
-            case "notifyPermission":
-                notificationPermission(id, message.optBoolean("request"));
-                break;
-            case "notify":
-                FlightWatch.post(this, message.optString("title", "Aeris"), message.optString("body"), message.optString("id", "aeris"));
-                replyDevice(id, true, null);
-                break;
-            case "watch": {
-                final org.json.JSONArray items = message.optJSONArray("items");
-                network.execute(() -> FlightWatch.setItems(getApplicationContext(), items));
-                replyDevice(id, true, null);
-                break;
+        try {
+            switch (message.optString("action")) {
+                case "location":
+                    requestLocation(id);
+                    break;
+                case "notifyPermission":
+                    notificationPermission(id, message.optBoolean("request"));
+                    break;
+                case "notify":
+                    FlightWatch.post(this, message.optString("title", "Aeris"), message.optString("body"), message.optString("id", "aeris"));
+                    replyDevice(id, true, null);
+                    break;
+                case "watch": {
+                    final org.json.JSONArray items = message.optJSONArray("items");
+                    runDeviceTask(id, () -> {
+                        FlightWatch.setItems(getApplicationContext(), items);
+                        return true;
+                    });
+                    break;
+                }
+                case "watchState":
+                    runDeviceTask(id, () -> FlightWatch.items(getApplicationContext()));
+                    break;
+                case "runChecks":
+                    runDeviceTask(id, () -> FlightWatch.checkAll(getApplicationContext()));
+                    break;
+                default:
+                    replyDevice(id, null, "Unknown action");
             }
-            case "watchState":
-                network.execute(() -> {
-                    final org.json.JSONArray items = FlightWatch.items(getApplicationContext());
-                    runOnUiThread(() -> replyDevice(id, items, null));
-                });
-                break;
-            case "runChecks":
-                network.execute(() -> {
-                    final JSONObject summary = FlightWatch.checkAll(getApplicationContext());
-                    runOnUiThread(() -> replyDevice(id, summary, null));
-                });
-                break;
-            default:
-                replyDevice(id, null, "Unknown action");
+        } catch (RuntimeException error) {
+            replyDevice(id, null, "The device request could not be completed. Please try again.");
+        }
+    }
+
+    /** A native failure must reject the web request, never escape an executor and kill the app. */
+    private void runDeviceTask(String id, Callable<Object> task) {
+        try {
+            deviceWork.execute(() -> {
+                Object value = null;
+                String error = null;
+                try { value = task.call(); }
+                catch (Exception failure) { error = "Background checks could not be updated. Please try again."; }
+                final Object result = value;
+                final String failure = error;
+                runOnUiThread(() -> replyDevice(id, result, failure));
+            });
+        } catch (RuntimeException error) {
+            replyDevice(id, null, "The app is closing. Reopen Aeris to update background checks.");
         }
     }
 
@@ -322,6 +342,7 @@ public final class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         network.shutdownNow();
+        deviceWork.shutdownNow();
         if (webView != null) {
             webView.destroy();
             webView = null;

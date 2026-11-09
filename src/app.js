@@ -10,7 +10,7 @@ import {altitudeMSL} from './geo.js';
 import {demoFlights,scenarioTrack,DEMO_DURATION} from './data.js';
 import {searchAirlines,searchTypes,directLookups,matchesFlight,airlineFor,flightNumber} from './search.js';
 import {Collection,Watcher,place,localDate,daysBetween} from './collection.js';
-import {currentLocation,notificationPermission,notify,syncWatchList,backgroundChecks} from './device.js';
+import {currentLocation,notificationPermission,notify,createWatchSync,backgroundChecks} from './device.js';
 import {quality,escapeHTML as e,FT,KT,distance,routeFit,LIMITS,parseEndpoint} from './core.ts';
 
 const icons={
@@ -47,7 +47,7 @@ const canLive=()=>Boolean(bridge()||getProxy());
 const state={nav:'explore',tab:'overview',selected:null,airport:null,mode:canLive()?'live':'demo',view3d:false,studio:false,camera:'chase',demoTime:410,flights:demoFlights(410),
  units:loadPref('units','aviation'),mapStyle:loadPref('mapStyle','map'),projection:loadPref('projection','mercator'),showGround:loadPref('showGround',true),info:{},center:{lat:1.36,lng:103.99},zoom:6.6,
  me:null,search:{q:'',remote:null,results:null},trip:null,tripView:'list',historyRange:'year',mapFilter:null,form:null};
-let studio=null,lastUI=0,lastMapPush=0,lastFrame=0,lastTrail=0,lastSlow=0,lastSelected=0,toastTimer,dialogFocus,infoFor=null,searchTimer,searchSeq=0,pageVisible=true;
+let studio=null,lastUI=0,lastMapPush=0,lastFrame=0,lastTrail=0,lastSlow=0,lastSelected=0,toastTimer,dialogFocus,infoFor=null,searchTimer,searchSeq=0,pageVisible=true,mapDirty=true,mapInterval=250;
 const picks=new Map();// search results not yet on the map, by id
 
 $('#app').innerHTML=`
@@ -65,7 +65,7 @@ $('#app').innerHTML=`
 const map=new WorldMap($('#map'),{onSelect:id=>selectFlight(id),onAirport:selectAirport,onMove:onMapMove,onStyle:html=>{$('#map-credit').innerHTML=html;},onError:msg=>toast(msg),onReady:()=>{map.setProjection(state.projection);if(state.mapStyle!=='map')map.setStyle(state.mapStyle);if(state.me)map.setMe(state.me);}});
 map.projection=state.projection;
 {const lp=loadPref('layers',{})||{};for(const k of ['labels','trails','airports','altitudeColors'])if(typeof lp[k]==='boolean')map[k]=lp[k];}
-const live=new LiveFeed({storage,onUpdate:()=>{if(state.mode==='live')updateTrail(true);},onStatus:()=>renderSource()});
+const live=new LiveFeed({storage,onUpdate:()=>{mapDirty=true;if(state.mode==='live')updateTrail(true);},onStatus:()=>renderSource()});
 for(const id of loadPref('disabledProviders',[]))live.setEnabled(id,false);
 const collection=new Collection(storage);
 const nearAirport=(lat,lon,km)=>{const a=nearestAirports(lat,lon,1,'LMS')[0];return a&&a.distanceKm<=km?a:null;};
@@ -75,14 +75,15 @@ const watcher=new Watcher({collection,live,routeFor,nearAirport,native:nativeWat
  if(state.nav==='trips'&&state.tripView==='trip'){for(const f of Object.values(seen))if(!live.get(f.id))live.add(f);updatePlan(false);}
  if(['saved','trips'].includes(state.nav)||(!state.selected&&state.nav==='explore'))renderDetail();syncWatch();}});
 collection.onChange(()=>renderNav());
-let lastSync='';
-function syncWatch(){if(!bridge())return;const items=watcher.items(),key=JSON.stringify(items);if(key===lastSync)return;lastSync=key;syncWatchList(items);}
+let syncErrorShown=false;
+const sendWatch=createWatchSync(undefined,{onError:()=>{if(!syncErrorShown){toast('Saved on this device. Background checks could not start; Aeris will retry.');syncErrorShown=true;}}});
+async function syncWatch(){if(!bridge())return true;const ok=await sendWatch(watcher.items());if(ok)syncErrorShown=false;return ok;}
 // Airports load after the first map frame so they never delay aircraft.
 setTimeout(()=>loadAirports().then(()=>{map.setAirports(airportsGeoJSON());if(state.nav==='airports')renderDetail();}),600);
 if(!map.ok){const v=loadPref('view',null),c=v?.center||[103.99,1.36];onMapMove({west:c[0]-4,east:c[0]+4,south:c[1]-3,north:c[1]+3},7,{lng:c[0],lat:c[1]});}
-function onMapMove(bounds,zoom,center){state.center=center;state.zoom=zoom;live.setView(bounds,zoom);}
+function onMapMove(bounds,zoom,center){state.center=center;state.zoom=zoom;mapDirty=true;live.setView(bounds,zoom);}
 
-const selected=()=>currentFlights().find(f=>f.id===state.selected)||null;
+const selected=()=>state.mode==='live'?live.get(state.selected):state.flights.find(f=>f.id===state.selected)||null;
 function currentFlights(){return state.mode==='demo'?state.flights:live.list();}
 function displayFlight(f){return state.mode==='live'?(live.position(f.id)||f):f;}
 function visibleFlights(){return currentFlights().filter(f=>(state.showGround||!f.onGround)&&(state.mode==='demo'||quality(f).age<=LIMITS.lost)&&(!state.mapFilter||state.mapFilter.has(f.flight||f.callsign)||f.id===state.selected));}
@@ -144,9 +145,10 @@ function updateTrail(force=false){const t=performance.now();if(!force&&t-lastTra
 function selectAirport(id){state.airport=airportByCode(id);if(!state.airport)return;if(state.nav==='trips')leavePlan();state.nav='airports';closeSearch();if(state.view3d)closeScene();map.flyTo(state.airport.lat,state.airport.lon,Math.max(map.getZoom(),10));renderNav();renderDetail();if(innerWidth<=800)$('.workspace').classList.add('detail-open');}
 /** Push positions to the map, at a rate that drops as more aircraft are on screen. */
 function pushMap(force=false){
- const t=performance.now(),list=visibleFlights(),interval=list.length<1500?250:list.length<5000?400:700;
- if(!force&&t-lastMapPush<interval)return;lastMapPush=t;
- map.setFlights(list.map(displayFlight),state.selected,iconClass,stale);
+ const t=performance.now();
+ if(!force&&!mapDirty&&t-lastMapPush<mapInterval)return;lastMapPush=t;mapDirty=false;
+ const count=map.setFlights(visibleFlights(),state.selected,iconClass,stale,displayFlight)||0;
+ mapInterval=count<1500?250:count<5000?400:700;
 }
 
 // ——— Panels ———
@@ -198,7 +200,7 @@ function renderDetail(){
 <div class="airline-row"><span class="airline-monogram">${e((airlineFor(cs)?.iata||cs).slice(0,2))}</span><div class="flight-heading"><h2>${e(titleOf(f))}</h2><p>${e(sub||'Unknown operator')}</p></div></div>
 ${f.simulated?'':`<div class="action-row"><button class="secondary ${(isAirlineFlight?savedFlight:savedAircraft)?'on':''}" data-action="save-flight" aria-pressed="${Boolean(isAirlineFlight?savedFlight:savedAircraft)}">${icon('star')}${(isAirlineFlight?savedFlight:savedAircraft)?'Saved':'Save'}</button>${isAirlineFlight?`<button class="secondary ${savedFlight&&savedFlight.alerts!=='off'?'on':''}" data-action="notify-flight">${icon('bell')}Alerts</button><button class="secondary" data-action="add-to-trip">${icon('trip')}Trip</button>`:''}</div>`}
 <div class="route-card">${routeHTML(f)}<div class="route-status"><span class="phase"><span class="dot"></span><span id="flight-phase">${phase(f)}</span></span></div></div>
-<button class="view-card" data-action="3d" aria-label="View ${e(titleOf(f))} in 3D">${planeSVG}<span class="view-label"><strong>View in 3D</strong><small>Follow, orbit or cockpit over real terrain</small></span><span class="view-arrow">${icon('arrow')}</span></button>
+<button class="view-card" data-action="3d" aria-label="View ${e(titleOf(f))} in 3D"><span class="view-label"><strong>View in 3D</strong><small>Follow, orbit or cockpit</small></span>${planeSVG}<span class="view-arrow">${icon('arrow')}</span></button>
 <div class="detail-tabs" role="tablist">${['overview','aircraft','telemetry'].map(x=>`<button role="tab" aria-selected="${state.tab===x}" class="${state.tab===x?'active':''}" data-tab="${x}">${x[0].toUpperCase()+x.slice(1)}</button>`).join('')}</div><div role="tabpanel">${content}</div></div>`;
  $('#mobile-flight-name').textContent=titleOf(f);$('#scene-callsign').textContent=titleOf(f)+' · '+spec.name;
 }
@@ -596,7 +598,7 @@ if(selfTest&&bridge())setTimeout(async()=>{const r={step:'start'};window.__aeris
   if(f){r.step='alerts';r.alertsOn=await within(setAlertMode(f.flight||f.callsign,'every',f),15000).catch(err=>err.message);}
   r.step='trip';const t=collection.addTrip('Self-test');collection.addTripFlight(t.id,{callsign:f?.callsign||'SIA22',date:localDate(now())});
   r.step='check';await within(watcher.check(),60000).catch(()=>{});
-  r.step='sync';lastSync='';syncWatch();await new Promise(res=>setTimeout(res,1000));
+  r.step='sync';r.synced=await syncWatch();
   r.step='state';const st=await within(nativeCall('watchState'),8000);r.watched=Array.isArray(st)?st.length:st;r.withState=Array.isArray(st)?st.filter(x=>x.state?.t).length:0;
   r.step='background';r.background=await within(nativeCall('runChecks'),90000).catch(err=>err.message);
   r.step='notify';r.notify=await within(notify('Aeris','Test alert from the simulator check.','selftest'),8000).then(()=>'ok',err=>err.message);

@@ -84,14 +84,18 @@ final class FlightWatch {
             save(context, merged);
         }
         JobScheduler scheduler = context.getSystemService(JobScheduler.class);
+        if (scheduler == null) throw new IllegalStateException("Background checks are unavailable on this device.");
         if (merged.length() == 0) {
             scheduler.cancel(JOB_ID);
         } else if (scheduler.getPendingJob(JOB_ID) == null) {
-            scheduler.schedule(new JobInfo.Builder(JOB_ID, new ComponentName(context, FlightCheckJob.class))
+            int result = scheduler.schedule(new JobInfo.Builder(JOB_ID, new ComponentName(context, FlightCheckJob.class))
                 .setPeriodic(15 * 60 * 1000L)
                 .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
                 .setPersisted(true)
                 .build());
+            if (result != JobScheduler.RESULT_SUCCESS) {
+                throw new IllegalStateException("Background checks could not be scheduled. Please try again.");
+            }
         }
     }
 
