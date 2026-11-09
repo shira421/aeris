@@ -1,11 +1,12 @@
-# Validation record — v0.5.0, 8 November 2026
+# Validation record — v1.0.0, 9 November 2026
 
 | Check | Result | How |
 |---|---|---|
-| Unit tests | 42 pass | `npm test`: earlier tests plus the alert rules over whole flights (each alert once per leg; coverage gaps, a flickering ground flag and repeated emergency codes do not repeat alerts; nothing said about a flight that is not received; ground flag believed only near an airport at taxi speed; a route that does not fit is not used), alert wording, Off/Next/Every modes, trips and which flights are watched, history logging after landing (once), the watcher across many checks and merging the phone app's newer state, and the iOS background bundle (`dist/rules.js`) giving the same results |
+| Unit tests | 53 pass | `npm test`: parsing, prediction, geodesy, routes, search, alert rules over whole flights, trips and history, the watcher and native sync, the live engine's scheduling, and the web relay (who may use it, what it forwards, CORS and `Date` exposure, refusals, upstream failure) |
 | Android rules | Pass | `npm run test:android-rules`: `Rules.java` compiled with stand-ins for org.json and run on the same flights as the web rules; identical alerts, wording and tags |
 | Server and proxy | Pass | Static files, airports file, path traversal, methods, and rejection of non-allowlisted, non-HTTPS and credentialed proxy targets |
-| Browser, desktop and iPhone sizes | Pass (locally and on GitHub's Ubuntu runner) | Headless Chrome with software WebGL, feeds mocked: first-open location question and blue dot, live mode via proxy, aircraft drawn, tap selection with flight number and airline, route and time to go, airframe and telemetry tabs, 3D follow/orbit/cockpit/model, airport search, saving an airport, "singapore" listing the airline and its flights, "A350" listing the type in the air, "LH 400" found worldwide (an aircraft far outside the view), opened, saved and alerts turned on, Saved list, map options and data sources, no page errors |
+| Browser, desktop and iPhone sizes | Pass (locally and on GitHub's Ubuntu runner) | Headless Chrome with software WebGL, feeds mocked: location prompt and blue dot, live through the relay, selection, route, telemetry, 3D cameras, search (airline, type, worldwide jump), saved items and alerts, trips (only the trip's planes on the map), history, map options, the plain **Sources** button and its dialog, no "demo" anywhere, panning to a new region (planes in about 1 s), and the native bridge contracts |
+| Always live, no demo | Pass | The standalone `Aeris.html` opened from a file without a relay: one notice, an empty map, no demo traffic, not shown again on reload. Every source failing: one notice and a status line after 15 s; when the sources answer again the planes return and the status line clears by itself |
 | iOS app in the Simulator | Pass | App launches, live data through the native bridge, location reaches the page. Self-test: asks for notification permission (the prompt appears; CI cannot tap Allow), adds a live flight to a trip, syncs it to the app, runs a background check with the rules in JavaScriptCore (1 flight checked), posts an alert; **the app keeps running throughout** |
 | Real services from CI | Pass | `npm run test:live`: first aircraft in 0.5 s around Singapore, median age of on-screen positions 1.0–1.7 s; 131–153 aircraft drawn around London, 1.1–1.4 s; route checked (WJA2 YYC→LHR); 3D with geoid-corrected height; **worldwide search from London for an A380 over Australia (UAE75T → "EK 75T") answered in 0.87 s and the map went there**; "lufthansa" listed 90–94 Lufthansa flights from OpenSky's worldwide list; no page errors |
 | iOS device build | Pass | Unsigned `Release-iphoneos` build packaged as IPA with background app refresh and notification code; signed export runs only when secrets exist |
@@ -14,6 +15,11 @@
 | Rate limits | Adjusted | adsb.lol answered 429 after 45–70 s from GitHub's shared runner addresses even at 1.6 s spacing; Aeris backs off that source and adsb.fi carries the refresh. Behaviour from home or mobile addresses is not yet measured |
 
 ## Fixed during validation
+
+v1.0.0:
+- The standalone `Aeris.html` did not run at all: the build inlined the app with a string replacement, which expanded `$'`-like sequences in the code into pieces of the page. It now uses a function.
+- World-view map labels showed empty boxes for Chinese, Japanese, Thai and similar names (the map fonts have no such glyphs); base-map labels are now in Latin script.
+- A service-worker update could cache an older file from the browser's HTTP cache; installs now bypass it.
 
 v0.5.0:
 - The background check skipped flights when adsb.lol rate-limited the request; it now asks adsb.fi next.
@@ -34,6 +40,8 @@ v0.3.0:
 - The vertical-speed caption could say "Climbing" while descending.
 
 ## Not yet verified
+
+- The web app's relay on Cloudflare: its code is unit-tested and the Pages workflow checks live data through it after each deploy, but it runs only once the repository's Cloudflare secrets are set.
 
 - Physical iPhone/Android devices: battery, thermal behaviour, memory on older phones, long sessions.
 - Notifications and background checks on a device. The simulator cannot grant notification permission from CI, and iOS/Android decide when background checks run (15 minutes to hours apart). The alert rules themselves are unit-tested, and the crash reported on turning alerts on in v0.4.0 could not be reproduced in the simulator.

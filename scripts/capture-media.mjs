@@ -75,7 +75,6 @@ try{
 
  // 3D over real terrain.
  if(chosen){await page.evaluate(()=>window.__aeris.openScene('chase'));await wait(9000);await jpeg(page,'3d.jpg');
-  await page.evaluate(()=>window.__aeris.setCamera('orbit'));await wait(5000);await jpeg(page,'3d-orbit.jpg');
   await page.evaluate(()=>window.__aeris.closeScene());await wait(2000);}
  await page.evaluate(()=>window.__aeris.deselect());
 
