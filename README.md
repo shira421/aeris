@@ -1,5 +1,5 @@
 <p align="center"><img src="public/icons/icon-180.png" width="72" alt=""></p>
-<h1 align="center">Aeris</h1>
+<h1 align="center">Aeris (vibe coded for fun)</h1>
 <p align="center"><b>A live flight tracker for iPhone, Android and the web.</b><br>Find any flight in the air, follow the people you care about, and keep a record of where you have flown.</p>
 <p align="center">
 <a href="https://github.com/shira421/aeris/releases/latest"><img alt="Latest stable release" src="https://img.shields.io/github/v/release/shira421/aeris?label=stable&color=204e51"></a>
