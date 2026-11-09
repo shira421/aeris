@@ -1,7 +1,7 @@
 // Checks every data source Aeris can use: reachability, latency, CORS headers for the
 // GitHub Pages origin, payload shape and freshness. Run in CI (open internet); prints a table.
 const ORIGIN='https://shira421.github.io';
-const UA='Aeris/0.5 (+https://github.com/shira421/aeris; provider probe)';
+const UA='Aeris/1.0 (+https://github.com/shira421/aeris; provider probe)';
 const lat=1.36,lon=103.99;
 const probes=[
  ['adsb.lol point','https://api.adsb.lol/v2/point/'+lat+'/'+lon+'/250','readsb'],
@@ -12,6 +12,14 @@ const probes=[
  ['adsb.lol London','https://api.adsb.lol/v2/point/51.47/-0.45/250','readsb'],
  ['airplanes.live New York','https://api.airplanes.live/v2/point/40.64/-73.78/250','readsb'],
  ['OpenSky bbox SEA','https://opensky-network.org/api/states/all?lamin=-1&lomin=101&lamax=4&lomax=106','opensky'],
+ ['adsb.one point','https://api.adsb.one/v2/point/'+lat+'/'+lon+'/250','readsb'],
+ ['theairtraffic point','https://api.theairtraffic.com/v2/point/'+lat+'/'+lon+'/250','readsb'],
+ ['adsb.lol re-api circle','https://re-api.adsb.lol/?circle='+lat+','+lon+',250','readsb'],
+ ['adsb.lol re-api box','https://re-api.adsb.lol/?box=-1,4,101,106','readsb'],
+ ['airplanes.live re-api','https://re-api.airplanes.live/?circle='+lat+','+lon+',250','readsb'],
+ ['adsb.fi re-api','https://re-api.adsb.fi/?circle='+lat+','+lon+',250','readsb'],
+ ['adsb.lol globe json','https://adsb.lol/data/aircraft.json','readsb'],
+ ['adsb.lol v2 all','https://api.adsb.lol/v2/all','readsb'],
  ['adsb.lol type A388','https://api.adsb.lol/v2/type/A388','readsb'],
  ['adsb.fi type A388','https://opendata.adsb.fi/api/v2/type/A388','readsb'],
  ['adsb.lol callsign','https://api.adsb.lol/v2/callsign/SIA22','readsb'],

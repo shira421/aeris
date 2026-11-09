@@ -27,8 +27,9 @@ await copyFile(root+'public/manifest.webmanifest',root+'dist/manifest.webmanifes
 for(const n of ['180','192','512','maskable-512'])await copyFile(root+'public/icon-'+n+'.png',root+'dist/icons/icon-'+n+'.png');
 const sw=await readFile(root+'public/sw.js','utf8');
 await writeFile(root+'dist/sw.js',sw.replace('SOURCE_VERSION',createHash('sha256').update(js+css).digest('hex').slice(0,12)));
-// One self-contained file (offline demo + live data when opened inside a proxy-capable host).
+// One self-contained file. Replacements are functions: the bundle contains `$'`-like sequences that a
+// replacement string would expand.
 const airports=await readFile(root+'data/airports.json','utf8');
-const portable=html.replace(/<link rel="manifest"[^>]+>/,'').replace(/<link rel="apple-touch-icon"[^>]+>/,'').replace('<link rel="stylesheet" href="./src/style.css">',`<style>${css}</style>`).replace('<script type="module" src="./src/app.js"></script>',`<script>window.__AERIS_AIRPORTS__=${airports.replace(/<\//g,'<\\/')};</script><script>${js.replace(/<\/script/gi,'<\\/script')}</script>`);
+const portable=html.replace(/<link rel="manifest"[^>]+>/,'').replace(/<link rel="apple-touch-icon"[^>]+>/,'').replace('<link rel="stylesheet" href="./src/style.css">',()=>`<style>${css}</style>`).replace('<script type="module" src="./src/app.js"></script>',()=>`<script>window.__AERIS_AIRPORTS__=${airports.replace(/<\//g,'<\\/')};</script><script>${js.replace(/<\/script/gi,'<\\/script')}</script>`);
 await writeFile(root+'dist/Aeris.html',portable);
 console.log(`Built dist/ (app.js ${(js.length/1e6).toFixed(2)} MB, ${proxy?'proxy '+proxy:'no build-time proxy'}) and self-contained dist/Aeris.html`);
